@@ -1040,95 +1040,94 @@ export default function POSBilling() {
 
   if (!isAuthorized) {
     return (
-      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center p-6 relative overflow-hidden font-sans">
-        {/* Abstract Background Orbs */}
-        <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-[#6B1422]/20 rounded-full blur-[120px] mix-blend-screen animate-pulse" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-[#FCD814]/10 rounded-full blur-[120px] mix-blend-screen animate-pulse" style={{ animationDelay: '2s' }} />
+      <div className="min-h-screen bg-[#FAF8F5] flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans">
+        {/* Custom luxury grid pattern overlay */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#6B1422/0.015_1px,transparent_1px),linear-gradient(to_bottom,#6B1422/0.015_1px,transparent_1px)] bg-[size:4rem_4rem]" />
         
-        {/* Main Container */}
-        <div className="relative z-10 w-full max-w-6xl flex flex-col lg:flex-row items-center gap-12 lg:gap-20">
+        {/* Abstract Background Orbs */}
+        <div className="absolute top-[-20%] left-[-20%] w-[600px] h-[600px] bg-[#6B1422]/5 rounded-full blur-[150px] animate-pulse" />
+        <div className="absolute bottom-[-20%] right-[-20%] w-[600px] h-[600px] bg-[#6B1422]/10 rounded-full blur-[150px] animate-pulse" style={{ animationDelay: '2s' }} />
+        
+        {/* Main Card Container */}
+        <div className="relative z-10 w-full max-w-md bg-white border border-[#D4AF37]/20 rounded-[2.5rem] p-8 md:p-10 shadow-[0_30px_70px_rgba(107,20,34,0.06)] overflow-hidden group flex flex-col items-center text-center">
           
-          {/* Left Side Branding */}
-          <div className="w-full lg:w-1/2 flex flex-col items-center lg:items-start text-center lg:text-left">
-            <div className="w-24 h-24 bg-white/5 backdrop-blur-xl rounded-3xl p-4 border border-white/10 shadow-2xl mb-8 group hover:scale-105 transition-transform duration-500">
-              <img src="/icon.png" alt="Logo" className="w-full h-full object-contain drop-shadow-lg group-hover:rotate-12 transition-transform duration-500" />
+          {/* Card top border gradient accent */}
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#D4AF37] via-[#6B1422] to-[#D4AF37]" />
+          
+          {/* Logo with Gradient Hover Glow */}
+          <div className="relative group mb-6">
+            <div className="absolute -inset-1.5 bg-gradient-to-r from-[#D4AF37] to-[#6B1422] rounded-2xl blur opacity-25 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
+            <div className="relative w-20 h-20 bg-white rounded-2xl p-3.5 border border-[#D4AF37]/20 shadow-lg flex items-center justify-center">
+              <img src="/icon.png" alt="Logo" className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500" />
             </div>
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-full mb-6 backdrop-blur-md">
-              <span className="w-2 h-2 rounded-full bg-[#6B1422] animate-pulse" />
-              <span className="text-[10px] font-bold text-white/80 tracking-widest uppercase">System Online</span>
-            </div>
-            <h1 className="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-white/90 to-white/40 tracking-tight leading-[1.1] mb-6">
-              Next-Gen <br/> POS Control.
-            </h1>
-            <p className="text-white/50 text-base md:text-lg font-medium leading-relaxed max-w-md">
-              Seamlessly manage orders, analytics, and digital invoices for Zera through a unified, hyper-fast portal.
-            </p>
           </div>
 
-          {/* Right Side Login Card */}
-          <div className="w-full lg:w-1/2 max-w-md">
-            <div className="bg-white/5 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] p-8 md:p-12 shadow-[0_20px_70px_rgba(0,0,0,0.5)] relative overflow-hidden group">
-              
-              {/* Card internal glow */}
-              <div className="absolute -top-24 -right-24 w-48 h-48 bg-[#FCD814]/20 rounded-full blur-[60px] opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-              
-              <div className="relative z-10">
-                <h3 className="text-2xl font-bold text-white mb-2">Welcome Back</h3>
-                <p className="text-white/40 text-sm font-medium mb-10">Enter your secure passcode to access the terminal.</p>
-                
-                <form onSubmit={handleVerifyPasscode} className="space-y-6">
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-bold text-white/60 uppercase tracking-[0.2em] ml-1">
-                      Security Passcode
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-5 top-1/2 -translate-y-1/2 text-white/30">
-                        <Lock className="w-5 h-5" />
-                      </div>
-                      <input
-                        type={showPasscode ? "text" : "password"}
-                        name="update-pos-passcode"
-                        autoComplete="new-password"
-                        placeholder="••••••••"
-                        className="w-full bg-black/40 border border-white/10 hover:border-white/20 focus:border-[#6B1422] focus:bg-black/60 rounded-2xl pl-14 pr-14 py-4 text-white font-bold tracking-widest text-lg focus:outline-none transition-all placeholder:text-white/20"
-                        value={passcode}
-                        onChange={(e) => {
-                          setPasscode(e.target.value);
-                          if (passcodeError) setPasscodeError("");
-                        }}
-                        autoFocus
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPasscode(!showPasscode)}
-                        className="absolute right-5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/80 transition-colors cursor-pointer"
-                      >
-                        {showPasscode ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                      </button>
-                    </div>
-                    {passcodeError && (
-                      <p className="text-xs text-[#6B1422] font-bold mt-2 ml-1 animate-in fade-in slide-in-from-top-1">
-                        {passcodeError}
-                      </p>
-                    )}
-                  </div>
-                  
-                  <button
-                    type="submit"
-                    className="w-full py-4 bg-gradient-to-r from-[#6B1422] to-[#520D18] hover:from-[#852233] hover:to-[#6B1422] active:scale-[0.98] text-white rounded-2xl font-bold text-sm uppercase tracking-[0.15em] transition-all shadow-[0_10px_30px_rgba(107,20,34,0.3)] hover:shadow-[0_10px_40px_rgba(107,20,34,0.5)] flex items-center justify-center gap-3 mt-4 group cursor-pointer"
-                  >
-                    Authenticate
-                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                  </button>
-                </form>
+          {/* Title */}
+          <h1 className="text-3xl font-serif text-[#6B1422] tracking-tight leading-tight mb-2">
+            Zera Boutique
+          </h1>
+          <p className="text-[#1C1917]/50 text-xs font-bold uppercase tracking-[0.2em] mb-8">
+            POS Terminal
+          </p>
+
+          {/* Form */}
+          <form onSubmit={handleVerifyPasscode} className="w-full space-y-6 text-left">
+            <div className="space-y-3">
+              <label className="text-[9px] font-bold text-[#6B1422] uppercase tracking-[0.25em] ml-1">
+                Security Passcode
+              </label>
+              <div className="relative group/input">
+                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-[#D4AF37] group-focus-within/input:text-[#6B1422] transition-colors">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <input
+                  type={showPasscode ? "text" : "password"}
+                  name="update-pos-passcode"
+                  autoComplete="new-password"
+                  placeholder="••••••••"
+                  className="w-full bg-[#FAF8F5] border border-black/10 hover:border-[#D4AF37]/50 focus:border-[#6B1422] focus:bg-white rounded-2xl pl-13 pr-13 py-3.5 text-[#6B1422] font-mono tracking-widest text-lg focus:outline-none transition-all placeholder:text-black/20"
+                  value={passcode}
+                  onChange={(e) => {
+                    setPasscode(e.target.value);
+                    if (passcodeError) setPasscodeError("");
+                  }}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPasscode(!showPasscode)}
+                  className="absolute right-5 top-1/2 -translate-y-1/2 text-black/30 hover:text-[#6B1422] transition-colors cursor-pointer"
+                >
+                  {showPasscode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
+              {passcodeError && (
+                <p className="text-xs text-[#6B1422] font-bold mt-2 ml-1 animate-in fade-in slide-in-from-top-1">
+                  {passcodeError}
+                </p>
+              )}
             </div>
             
-            <div className="mt-8 flex items-center justify-center gap-2 text-white/30 text-[10px] font-bold tracking-widest uppercase">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              End-to-End Encrypted Session
-            </div>
+            <button
+              type="submit"
+              className="w-full py-4 bg-[#6B1422] hover:bg-[#520D18] active:scale-[0.98] text-white rounded-2xl font-bold text-xs uppercase tracking-[0.2em] transition-all shadow-[0_10px_30px_rgba(107,20,34,0.1)] hover:shadow-[0_12px_35px_rgba(107,20,34,0.2)] flex items-center justify-center gap-3 mt-4 group cursor-pointer border border-[#D4AF37]/20"
+            >
+              Authenticate
+              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform text-[#D4AF37]" />
+            </button>
+          </form>
+
+          {/* Status Badge */}
+          <div className="mt-8 inline-flex items-center gap-2 px-3 py-1 bg-[#6B1422]/5 border border-[#D4AF37]/20 rounded-full shadow-sm">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#6B1422] animate-pulse" />
+            <span className="text-[8px] font-bold text-[#6B1422] tracking-[0.15em] uppercase">SYSTEM ONLINE • ENCRYPTED</span>
           </div>
+
+        </div>
+        
+        {/* Footnote */}
+        <div className="mt-6 text-[#1C1917]/30 text-[9px] font-bold tracking-widest uppercase">
+          Zera Management Terminal v1.0
         </div>
       </div>
     );
