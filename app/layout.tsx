@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Korean Fried Chicken",
-  description: "",
+  title: "Zera - Premium POS",
+  description: "Zera POS Billing Panel and Digital Invoices",
 };
 
 export default function RootLayout({
