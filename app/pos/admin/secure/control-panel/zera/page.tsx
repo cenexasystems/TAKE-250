@@ -692,54 +692,17 @@ export default function POSBilling() {
       return;
     }
 
-    // Copy items to handle prompts and update React state
-    const updatedItems = [...items];
-    let pricePrompted = false;
-
-    for (let i = 0; i < updatedItems.length; i++) {
-      const item = updatedItems[i];
-      if (item.name && item.name.trim() !== "") {
-        if (item.price === undefined || item.price === null || isNaN(item.price) || item.price <= 0) {
-          const userPrice = window.prompt(`Enter price for "${item.name}":`);
-          if (userPrice === null) {
-            // User cancelled
-            return;
-          }
-          const priceNum = parseFloat(userPrice);
-          if (isNaN(priceNum) || priceNum <= 0 || priceNum > 99999999.99) {
-            alert("Invalid price entered. Checkout cancelled.");
-            return;
-          }
-          updatedItems[i] = { ...item, price: priceNum };
-          pricePrompted = true;
-        }
-      }
-    }
-
-    if (pricePrompted) {
-      setItems(updatedItems);
-    }
-
-    // Validate that every item in the cart that has a price also has a name
-    const hasItemWithoutName = updatedItems.some(
-      (i) => i.price > 0 && (!i.name || i.name.trim() === "")
-    );
-    if (hasItemWithoutName) {
-      alert("Please ensure all items with a price have a valid name.");
+    // Strict validation: every single row must have a name and a price > 0
+    const hasInvalidItem = items.some(i => !i.name || i.name.trim() === "" || i.price === undefined || i.price <= 0);
+    
+    if (hasInvalidItem || items.length === 0) {
+      alert("Please ensure all items have a valid name and a price greater than 0. Remove any empty rows before proceeding.");
       return;
     }
-
-    // Filter valid items
-    const itemsToSave = updatedItems.filter((i) => i.name && i.name.trim() !== "" && i.qty > 0 && i.price > 0);
-
-    // Validate at least one item is present
-    if (itemsToSave.length === 0) {
-      alert("Please add at least one product with a valid name and price to create the order.");
-      return;
-    }
+    const itemsToSave = items;
 
     // Recalculate values locally to avoid React state lag issues
-    const localSubtotal = updatedItems.reduce((acc, item) => acc + item.price * item.qty, 0);
+    const localSubtotal = itemsToSave.reduce((acc, item) => acc + item.price * item.qty, 0);
     const localCalculatedDiscount =
       discountType === "percent"
         ? localSubtotal * (discountValue / 100)
@@ -910,7 +873,10 @@ export default function POSBilling() {
       customerName: customerName || "Guest",
       customerPhone,
       source: isOnline ? "ONLINE" : "OFFLINE",
-      items: localItems,
+      items: [
+        ...itemsToSave,
+        ...(applyGST && gstAmount > 0 ? [{ id: Math.random().toString(), name: `GST (${gstPercentage}%)`, desc: "", price: gstAmount, qty: 1 }] : [])
+      ],
       subtotal,
       discount: calculatedDiscount,
       discountType: discountType === "percent" ? "PERCENT" : "FIXED",
@@ -942,36 +908,31 @@ export default function POSBilling() {
     }
     const domain = window.location.origin;
     const invoiceUrl = `${domain}/invoice/${order.id}`;
-
     const shopEmoji = String.fromCodePoint(0x2728);
     const checkEmoji = String.fromCodePoint(0x2705);
-    const tagEmoji = String.fromCodePoint(0x1F516);
     const moneyEmoji = String.fromCodePoint(0x1F4B0);
     const receiptEmoji = String.fromCodePoint(0x1F4E6);
-
-    let message = `${shopEmoji} *Zera* ${shopEmoji}\n\n`;
+    let message = `${shopEmoji} *Korean Fried Chicken* ${shopEmoji}\n\n`;
     message += `${checkEmoji} Here are your invoice details!\n\n`;
-    message += `Subtotal: ₹${order.subtotal.toFixed(2)}\n`;
     
+    message += `*Subtotal:* ₹${order.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
     if (order.discount > 0) {
-      message += `Discount Applied: -₹${order.discount.toFixed(2)}\n`;
+      message += `*Discount Applied:* -₹${order.discount.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
     }
     
-    const gstItem = order.items.find((i) => i.name && i.name.startsWith("GST ("));
-    if (gstItem) {
-      message += `${gstItem.name}: ₹${gstItem.price.toFixed(2)}\n`;
+    // Bulletproof mathematical GST calculation
+    const gstItem = order.items.find(i => i.name && i.name.startsWith("GST"));
+    const calculatedGst = order.grandTotal - (order.subtotal - order.discount + order.deliveryFee);
+    
+    if (calculatedGst > 0.1) {
+      const gstLabel = gstItem ? gstItem.name : "GST";
+      message += `*${gstLabel}:* ₹${calculatedGst.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
     }
     
-    if (order.deliveryFee > 0) {
-      message += `Delivery Fee: ₹${order.deliveryFee.toFixed(2)}\n`;
-    }
-    
-    message += `\n${moneyEmoji} *Total Amount: ₹${order.grandTotal.toFixed(2)}*\n\n`;
+    message += `\n${moneyEmoji} *Total Amount:* ₹${order.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n\n`;
     message += `${receiptEmoji} View and download your detailed digital receipt here:\n${invoiceUrl}`;
-
     const encodedMessage = encodeURIComponent(message);
     let whatsappUrl = `https://api.whatsapp.com/send/?phone=91${order.customerPhone.split('_')[0]}&text=${encodedMessage}`;
-
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     if (isMobile) {
       window.location.href = whatsappUrl;
@@ -1000,7 +961,9 @@ export default function POSBilling() {
     }
     if (analyticsPeriod === "week") {
       const startOfWeek = new Date(now);
-      startOfWeek.setDate(now.getDate() - now.getDay()); // Sunday start of week
+      const dayOfWeek = startOfWeek.getDay();
+      const distToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      startOfWeek.setDate(startOfWeek.getDate() + distToMonday); // Monday start of week
       startOfWeek.setHours(0, 0, 0, 0);
       return orderDate >= startOfWeek;
     }
@@ -2874,7 +2837,7 @@ export default function POSBilling() {
                                   </td>
                                   <td className="p-3 text-xs font-semibold text-[#000000] text-right">
                                     {order.items.reduce(
-                                      (sum, i) => sum + i.qty,
+                                      (sum, i) => sum + ((i.name && !i.name.startsWith("GST (")) ? i.qty : 0),
                                       0,
                                     )}{" "}
                                     pcs
