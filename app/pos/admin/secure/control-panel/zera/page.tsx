@@ -692,18 +692,64 @@ export default function POSBilling() {
       return;
     }
 
-    // Filter valid items: must have a name, quantity > 0, and price >= 0
-    const itemsToSave = items.filter((i) => i.name && i.name.trim() !== "" && i.qty > 0 && i.price >= 0);
+    // Copy items to handle prompts and update React state
+    const updatedItems = [...items];
+    let pricePrompted = false;
 
-    // Validate at least one item is present
-    if (itemsToSave.length === 0) {
-      alert("Please add at least one product with a valid name to create the order.");
+    for (let i = 0; i < updatedItems.length; i++) {
+      const item = updatedItems[i];
+      if (item.name && item.name.trim() !== "") {
+        if (item.price === undefined || item.price === null || isNaN(item.price) || item.price <= 0) {
+          const userPrice = window.prompt(`Enter price for "${item.name}":`);
+          if (userPrice === null) {
+            // User cancelled
+            return;
+          }
+          const priceNum = parseFloat(userPrice);
+          if (isNaN(priceNum) || priceNum <= 0 || priceNum > 99999999.99) {
+            alert("Invalid price entered. Checkout cancelled.");
+            return;
+          }
+          updatedItems[i] = { ...item, price: priceNum };
+          pricePrompted = true;
+        }
+      }
+    }
+
+    if (pricePrompted) {
+      setItems(updatedItems);
+    }
+
+    // Validate that every item in the cart that has a price also has a name
+    const hasItemWithoutName = updatedItems.some(
+      (i) => i.price > 0 && (!i.name || i.name.trim() === "")
+    );
+    if (hasItemWithoutName) {
+      alert("Please ensure all items with a price have a valid name.");
       return;
     }
 
+    // Filter valid items
+    const itemsToSave = updatedItems.filter((i) => i.name && i.name.trim() !== "" && i.qty > 0 && i.price > 0);
+
+    // Validate at least one item is present
+    if (itemsToSave.length === 0) {
+      alert("Please add at least one product with a valid name and price to create the order.");
+      return;
+    }
+
+    // Recalculate values locally to avoid React state lag issues
+    const localSubtotal = updatedItems.reduce((acc, item) => acc + item.price * item.qty, 0);
+    const localCalculatedDiscount =
+      discountType === "percent"
+        ? localSubtotal * (discountValue / 100)
+        : discountValue;
+    const localGstAmount = applyGST ? (localSubtotal - localCalculatedDiscount) * (gstPercentage / 100) : 0;
+    const localGrandTotal = Math.max(0, localSubtotal - localCalculatedDiscount) + deliveryFee + localGstAmount;
+
     // Validate totals against PostgreSQL numeric(10,2) overflow limit (99,999,999.99)
     const MAX_LIMIT = 99999999.99;
-    if (subtotal > MAX_LIMIT || grandTotal > MAX_LIMIT || cashReceived > MAX_LIMIT || deliveryFee > MAX_LIMIT) {
+    if (localSubtotal > MAX_LIMIT || localGrandTotal > MAX_LIMIT || cashReceived > MAX_LIMIT || deliveryFee > MAX_LIMIT) {
       alert("The order totals exceed the maximum allowable system limit of ₹99,999,999.99. Please adjust the item prices, delivery fee, or cash received.");
       return;
     }
@@ -775,11 +821,11 @@ export default function POSBilling() {
       })),
     ];
 
-    if (applyGST && gstAmount > 0) {
+    if (applyGST && localGstAmount > 0) {
       dbItems.push({
         order_id: newOrderId,
         snapshot_name: `GST (${gstPercentage}%)`,
-        snapshot_price: gstAmount,
+        snapshot_price: localGstAmount,
         quantity: 1,
       });
     }
@@ -790,12 +836,12 @@ export default function POSBilling() {
         customer_id: custData.id,
         source: isOnline ? "ONLINE" : "OFFLINE",
         status: "COMPLETED",
-        subtotal,
+        subtotal: localSubtotal,
         discount_type: discountType === "percent" ? "PERCENT" : "FIXED",
         discount_value: discountValue,
-        discount_amount: calculatedDiscount,
+        discount_amount: localCalculatedDiscount,
         delivery_fee: deliveryFee,
-        grand_total: grandTotal,
+        grand_total: localGrandTotal,
         cash_received: cashReceived,
       });
 
@@ -812,13 +858,22 @@ export default function POSBilling() {
     const receiptEmoji = String.fromCodePoint(0x1F4E6);
 
     let message = `${shopEmoji} *Zera* ${shopEmoji}\n\n`;
-    message += `${checkEmoji} Thank you for shopping with us!\n\n`;
+    message += `${checkEmoji} Here are your invoice details!\n\n`;
+    message += `Subtotal: ₹${localSubtotal.toFixed(2)}\n`;
     
-    if (calculatedDiscount > 0) {
-      message += `${tagEmoji} Discount Applied: ₹${calculatedDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
+    if (localCalculatedDiscount > 0) {
+      message += `Discount Applied: -₹${localCalculatedDiscount.toFixed(2)}\n`;
     }
     
-    message += `${moneyEmoji} Total Amount: ₹${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n\n`;
+    if (applyGST && localGstAmount > 0) {
+      message += `GST (${gstPercentage}%): ₹${localGstAmount.toFixed(2)}\n`;
+    }
+    
+    if (deliveryFee > 0) {
+      message += `Delivery Fee: ₹${deliveryFee.toFixed(2)}\n`;
+    }
+    
+    message += `\n${moneyEmoji} *Total Amount: ₹${localGrandTotal.toFixed(2)}*\n\n`;
     message += `${receiptEmoji} View and download your detailed digital receipt here:\n${invoiceUrl}`;
 
     const encodedMessage = encodeURIComponent(message);
@@ -896,12 +951,22 @@ export default function POSBilling() {
 
     let message = `${shopEmoji} *Zera* ${shopEmoji}\n\n`;
     message += `${checkEmoji} Here are your invoice details!\n\n`;
+    message += `Subtotal: ₹${order.subtotal.toFixed(2)}\n`;
     
     if (order.discount > 0) {
-      message += `${tagEmoji} Discount Applied: ₹${order.discount.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
+      message += `Discount Applied: -₹${order.discount.toFixed(2)}\n`;
     }
     
-    message += `${moneyEmoji} Total Amount: ₹${order.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n\n`;
+    const gstItem = order.items.find((i) => i.name && i.name.startsWith("GST ("));
+    if (gstItem) {
+      message += `${gstItem.name}: ₹${gstItem.price.toFixed(2)}\n`;
+    }
+    
+    if (order.deliveryFee > 0) {
+      message += `Delivery Fee: ₹${order.deliveryFee.toFixed(2)}\n`;
+    }
+    
+    message += `\n${moneyEmoji} *Total Amount: ₹${order.grandTotal.toFixed(2)}*\n\n`;
     message += `${receiptEmoji} View and download your detailed digital receipt here:\n${invoiceUrl}`;
 
     const encodedMessage = encodeURIComponent(message);
