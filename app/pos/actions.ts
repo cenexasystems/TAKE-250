@@ -323,3 +323,17 @@ export async function fetchOrderByIdAction(id: string) {
     return { success: false, error: error.message };
   }
 }
+
+export async function deleteOrderAction(id: string) {
+  try {
+    const sql = getDb();
+    // Delete order items first (foreign key constraint)
+    await sql`DELETE FROM order_items WHERE order_id = ${id};`;
+    // Then delete the order itself
+    await sql`DELETE FROM orders WHERE id = ${id};`;
+    return { success: true };
+  } catch (error: any) {
+    console.error("deleteOrderAction error:", error.message);
+    return { success: false, error: error.message };
+  }
+}

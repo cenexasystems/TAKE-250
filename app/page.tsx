@@ -165,17 +165,17 @@ export default function Home() {
                     Take250shop
                   </p>
                   <p className="text-xs text-neutral-300 leading-relaxed mt-0.5">
-                    Coco townn, Kinathukadavu,<br />
-                    Pollachi Main road,<br />
-                    Coimbatore, Tamil Nadu - 642109
+                    take250shop,<br />
+                    Thanjavur main road,<br />
+                    Karanthai, Pincode: 613002
                   </p>
                 </div>
               </div>
 
               <div className="mt-4 pt-4 border-t border-neutral-800/80 flex items-center justify-between">
-                <span className="text-[11px] text-neutral-400">Kinathukadavu, Coimbatore</span>
+                <span className="text-[11px] text-neutral-400">Karanthai, Thanjavur</span>
                 <a
-                  href="https://maps.google.com/?q=Kinathukadavu,+Pollachi+Main+road,+Coimbatore+642109"
+                  href="https://maps.google.com/?q=take250shop,+Thanjavur+main+road,+Karanthai+613002"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-[11px] font-bold text-[#D4AF37] hover:underline"
@@ -231,7 +231,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-[#D4AF37]/20 py-6 text-center bg-[#0a0a0a]">
         <p className="text-[11px] font-bold text-[#D4AF37] tracking-widest uppercase">
-          Take250shop dress & footwear • Kinathukadavu, Coimbatore
+          Take250shop dress & footwear • Karanthai, Thanjavur
         </p>
         <p className="text-[9px] font-medium text-neutral-400 uppercase tracking-wider mt-1.5">
           Proprietor: M. Ramkumar • Ph: 8883173358 / 7339344149 • © {new Date().getFullYear()} Take250

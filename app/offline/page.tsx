@@ -69,7 +69,7 @@ export default function OfflinePage() {
       {/* Footer */}
       <footer className="border-t border-[#D4AF37]/20 py-6 text-center bg-[#0a0a0a]">
         <p className="text-[10px] font-bold text-[#D4AF37] tracking-widest uppercase">
-          Take250shop dress & footwear • Kinathukadavu, Coimbatore
+          Take250shop dress & footwear • Karanthai, Thanjavur
         </p>
         <p className="text-[9px] font-semibold text-neutral-500 uppercase tracking-wider mt-1">
           © {new Date().getFullYear()} Take250. All Rights Reserved.
