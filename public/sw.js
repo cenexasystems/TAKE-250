@@ -1,6 +1,6 @@
-const CACHE_VERSION = 'v1.0.0';
-const CACHE_STATIC_NAME = `zera-static-${CACHE_VERSION}`;
-const CACHE_DYNAMIC_NAME = `zera-dynamic-${CACHE_VERSION}`;
+const CACHE_VERSION = 'v2.0.0-take250';
+const CACHE_STATIC_NAME = `take250-static-${CACHE_VERSION}`;
+const CACHE_DYNAMIC_NAME = `take250-dynamic-${CACHE_VERSION}`;
 
 // Precache essential app shell assets
 const PRECACHE_ASSETS = [
@@ -55,15 +55,15 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
-  // 2. NEVER cache API requests, Supabase backend calls, auth/login endpoints, or Next.js server actions
+  // 2. NEVER cache API requests, database backend calls, auth/login endpoints, or Next.js server actions
   const isApiRequest = 
     url.pathname.startsWith('/api/') ||
-    url.hostname.includes('supabase.co') ||
-    url.hostname.includes('supabase.in') ||
+    url.hostname.includes('neon.tech') ||
     url.pathname.includes('/auth/') ||
     url.pathname.includes('/login') ||
     request.headers.get('x-next-server-action') !== null ||
     request.headers.get('purpose') === 'prefetch';
+
 
   if (isApiRequest) {
     return; // Pass through to standard network fetch

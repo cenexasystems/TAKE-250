@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const viewport: Viewport = {
-  themeColor: "#6B1422",
+  themeColor: "#000000",
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
@@ -22,13 +22,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Zera - Premium POS",
-  description: "Zera POS Billing Panel and Digital Invoices",
+  title: "Take 250 Shirt Shop - POS & Billing",
+  description: "Take 250 Shirt Shop POS Billing Panel and Digital Invoices",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
-    title: "Zera POS",
+    statusBarStyle: "black-translucent",
+    title: "Take 250",
   },
   icons: {
     icon: [
@@ -57,9 +57,9 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.webmanifest" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="Zera POS" />
-        <meta name="theme-color" content="#6B1422" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="Take 250" />
+        <meta name="theme-color" content="#000000" />
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body className="min-h-full flex flex-col">

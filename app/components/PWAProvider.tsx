@@ -33,7 +33,7 @@ export default function PWAProvider({ children }: { children: React.ReactNode })
     const isSafari = /safari/.test(ua) && !/chrome|crios|fxios|edgios/.test(ua);
     setIsIOS(isIosDevice && isSafari);
 
-    const iosHintDismissed = localStorage.getItem("zera_ios_hint_dismissed");
+    const iosHintDismissed = localStorage.getItem("take250_ios_hint_dismissed");
     if (isIosDevice && isSafari && !isRunningStandalone && !iosHintDismissed) {
       setShowIOSHint(true);
     }
@@ -112,7 +112,7 @@ export default function PWAProvider({ children }: { children: React.ReactNode })
 
   const dismissIOSHint = () => {
     setShowIOSHint(false);
-    localStorage.setItem("zera_ios_hint_dismissed", "true");
+    localStorage.setItem("take250_ios_hint_dismissed", "true");
   };
 
   return (
@@ -121,19 +121,19 @@ export default function PWAProvider({ children }: { children: React.ReactNode })
 
       {/* Floating Update Notification */}
       {updateAvailable && (
-        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 z-50 max-w-sm bg-[#6B1422] text-white p-4 rounded-2xl shadow-xl border border-white/20 flex items-center justify-between gap-3 animate-bounce">
+        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 z-50 max-w-sm bg-black text-white p-4 rounded-2xl shadow-2xl border border-[#D4AF37]/40 flex items-center justify-between gap-3 animate-bounce">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-white/10 rounded-xl">
-              <RefreshCw className="w-5 h-5 text-[#f6e097]" />
+            <div className="p-2 bg-[#D4AF37]/20 border border-[#D4AF37]/30 rounded-xl">
+              <RefreshCw className="w-5 h-5 text-[#D4AF37]" />
             </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-white">Update Available</p>
-              <p className="text-[11px] text-white/80">A new version of Zera POS is ready.</p>
+              <p className="text-[11px] text-white/80">A new version of Take250 POS is ready.</p>
             </div>
           </div>
           <button
             onClick={handleUpdateClick}
-            className="px-3 py-1.5 bg-white text-[#6B1422] text-xs font-bold rounded-xl shadow-xs hover:bg-[#FAF8F5] transition-colors shrink-0"
+            className="px-3 py-1.5 bg-[#D4AF37] text-black text-xs font-bold rounded-xl shadow-xs hover:bg-[#F3E5AB] transition-colors shrink-0"
           >
             Refresh
           </button>
@@ -145,33 +145,33 @@ export default function PWAProvider({ children }: { children: React.ReactNode })
         <div className="fixed top-4 right-4 z-50">
           <button
             onClick={handleInstallClick}
-            className="flex items-center gap-2 bg-[#6B1422] hover:bg-[#852233] text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-lg border border-white/10 transition-all hover:scale-105 active:scale-95"
-            title="Install Zera App"
+            className="flex items-center gap-2 bg-black hover:bg-neutral-900 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-lg border border-[#D4AF37]/40 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+            title="Install Take250 App"
           >
-            <Download className="w-4 h-4 text-[#f6e097]" />
-            <span>Install App</span>
+            <Download className="w-4 h-4 text-[#D4AF37]" />
+            <span className="text-white">Install App</span>
           </button>
         </div>
       )}
 
       {/* iOS Safari "Add to Home Screen" Hint Banner */}
       {showIOSHint && !isStandalone && isIOS && (
-        <div className="fixed bottom-4 left-4 right-4 z-50 max-w-md mx-auto bg-white border border-black/10 shadow-2xl rounded-2xl p-4 text-[#1A1A1A] animate-slide-up">
+        <div className="fixed bottom-4 left-4 right-4 z-50 max-w-md mx-auto bg-black text-white border border-[#D4AF37]/30 shadow-2xl rounded-2xl p-4 animate-slide-up">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#FAF8F5] p-1 border border-black/10 shrink-0">
-                <img src="/icon-192.png" alt="Zera" className="w-full h-full object-contain" />
+              <div className="w-10 h-10 rounded-xl bg-neutral-900 p-1 border border-[#D4AF37]/30 shrink-0">
+                <img src="/icon-192.png" alt="Take250" className="w-full h-full object-contain" />
               </div>
               <div className="text-xs">
-                <p className="font-bold text-[#6B1422]">Install Zera POS</p>
-                <p className="text-black/70 mt-0.5 leading-relaxed">
-                  Tap the <Share className="w-3.5 h-3.5 inline-block text-[#6B1422] mx-1 -mt-0.5" /> Share button below and select <span className="font-semibold text-black">"Add to Home Screen"</span> for the best full-screen experience.
+                <p className="font-bold text-[#D4AF37]">Install Take250 POS</p>
+                <p className="text-white/80 mt-0.5 leading-relaxed">
+                  Tap the <Share className="w-3.5 h-3.5 inline-block text-[#D4AF37] mx-1 -mt-0.5" /> Share button below and select <span className="font-semibold text-white">"Add to Home Screen"</span> for the best full-screen experience.
                 </p>
               </div>
             </div>
             <button
               onClick={dismissIOSHint}
-              className="p-1 text-black/40 hover:text-black transition-colors shrink-0"
+              className="p-1 text-white/50 hover:text-white transition-colors shrink-0 cursor-pointer"
               aria-label="Close"
             >
               <X className="w-4 h-4" />
