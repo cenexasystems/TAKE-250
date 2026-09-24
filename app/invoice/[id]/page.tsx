@@ -123,6 +123,12 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
     let message = `✨ *Take250shop dress & footwear* ✨\n*Proprietor:* M.Ramkumar\n*take250shop, Thanjavur main road, Karanthai, Pincode: 613002*\n*Contact:* 8883173358 / 7339344149\n*Email:* take250shop@gmail.com\n\n`;
     message += `✅ Here are your invoice details!\n\n`;
     message += `*Invoice #:* ${order.id}\n`;
+    const paymentText = order.payment_method === "split"
+      ? `Split — Cash ₹${(order.cash_amount || 0).toFixed(2)} + GPay ₹${(order.gpay_amount || 0).toFixed(2)}`
+      : order.payment_method === "gpay"
+      ? `GPay — ₹${order.grand_total.toFixed(2)}`
+      : `Cash — ₹${order.grand_total.toFixed(2)}`;
+    message += `*Payment:* ${paymentText}\n`;
     message += `*Total Amount:* ₹${order.grand_total.toFixed(2)}\n\n`;
     message += `📦 View and download your detailed digital receipt here:\n${invoiceUrl}`;
     const encoded = encodeURIComponent(message);
@@ -343,17 +349,52 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
             <span>₹{order.grand_total.toFixed(2)}</span>
           </div>
 
-          {order.cash_received > 0 && (
+          <div className="border-b border-dashed border-black/40 my-1" />
+
+          {/* Payment Method Breakdown */}
+          <div className="flex justify-between text-[10px] font-semibold text-black">
+            <span>Payment</span>
+            <span className="font-bold">
+              {order.payment_method === "split"
+                ? `Split — Cash ₹${(order.cash_amount || 0).toFixed(2)} + GPay ₹${(order.gpay_amount || 0).toFixed(2)}`
+                : order.payment_method === "gpay"
+                ? `GPay — ₹${order.grand_total.toFixed(2)}`
+                : `Cash — ₹${order.grand_total.toFixed(2)}`}
+            </span>
+          </div>
+
+          {order.payment_method === "split" && (
+            <div className="pl-2 border-l-2 border-black/20 text-neutral-700 text-[9px] my-0.5 space-y-0.5">
+              <div className="flex justify-between">
+                <span>• Cash</span>
+                <span className="font-semibold text-black">₹{(order.cash_amount || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>• GPay / UPI</span>
+                <span className="font-semibold text-black">₹{(order.gpay_amount || 0).toFixed(2)}</span>
+              </div>
+            </div>
+          )}
+
+          {order.cash_received > 0 && order.payment_method !== "gpay" && (
             <>
-              <div className="border-b border-dashed border-black/40 my-1" />
               <div className="flex justify-between text-[10px] text-neutral-800">
                 <span>Amount Received</span>
                 <span>₹{order.cash_received.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-[10px] font-semibold text-black">
-                <span>Balance Returned</span>
-                <span>₹{Math.max(0, order.cash_received - order.grand_total).toFixed(2)}</span>
-              </div>
+              {order.cash_received > (order.payment_method === "split" ? (order.cash_amount || 0) : order.grand_total) && (
+                <div className="flex justify-between text-[10px] font-semibold text-black">
+                  <span>Balance Returned</span>
+                  <span>
+                    ₹{(
+                      order.cash_received -
+                      (order.payment_method === "split"
+                        ? (order.cash_amount || 0)
+                        : order.grand_total)
+                    ).toFixed(2)}
+                  </span>
+                </div>
+              )}
             </>
           )}
         </div>

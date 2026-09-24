@@ -154,6 +154,9 @@ export async function createOrderAction(payload: {
   deliveryFee: number;
   grandTotal: number;
   cashReceived: number;
+  paymentMethod?: "cash" | "gpay" | "split";
+  cashAmount?: number;
+  gpayAmount?: number;
   items: Array<{
     snapshot_name: string;
     snapshot_price: number;
@@ -175,6 +178,14 @@ export async function createOrderAction(payload: {
     `;
     const customerId = custRows[0]?.id;
 
+    const pMethod = payload.paymentMethod || "cash";
+    const cAmount = payload.cashAmount !== undefined
+      ? payload.cashAmount
+      : (pMethod === "gpay" ? 0 : payload.grandTotal);
+    const gAmount = payload.gpayAmount !== undefined
+      ? payload.gpayAmount
+      : (pMethod === "gpay" ? payload.grandTotal : 0);
+
     // 2. Insert order
     await sql`
       INSERT INTO orders (
@@ -188,7 +199,10 @@ export async function createOrderAction(payload: {
         discount_amount, 
         delivery_fee, 
         grand_total, 
-        cash_received
+        cash_received,
+        payment_method,
+        cash_amount,
+        gpay_amount
       ) VALUES (
         ${payload.id}, 
         ${customerId || null}, 
@@ -200,7 +214,10 @@ export async function createOrderAction(payload: {
         ${payload.discountAmount}, 
         ${payload.deliveryFee}, 
         ${payload.grandTotal}, 
-        ${payload.cashReceived}
+        ${payload.cashReceived},
+        ${pMethod},
+        ${cAmount},
+        ${gAmount}
       );
     `;
 
@@ -246,6 +263,9 @@ export async function fetchOrdersAction() {
         o.delivery_fee::float AS delivery_fee,
         o.grand_total::float AS grand_total,
         o.cash_received::float AS cash_received,
+        COALESCE(o.payment_method, 'cash') AS payment_method,
+        COALESCE(o.cash_amount::float, CASE WHEN o.payment_method = 'gpay' THEN 0 ELSE o.grand_total::float END) AS cash_amount,
+        COALESCE(o.gpay_amount::float, CASE WHEN o.payment_method = 'gpay' THEN o.grand_total::float ELSE 0 END) AS gpay_amount,
         o.created_at,
         json_build_object('name', c.name, 'phone', c.phone) AS customers,
         COALESCE(
@@ -291,6 +311,9 @@ export async function fetchOrderByIdAction(id: string) {
         o.delivery_fee::float AS delivery_fee,
         o.grand_total::float AS grand_total,
         o.cash_received::float AS cash_received,
+        COALESCE(o.payment_method, 'cash') AS payment_method,
+        COALESCE(o.cash_amount::float, CASE WHEN o.payment_method = 'gpay' THEN 0 ELSE o.grand_total::float END) AS cash_amount,
+        COALESCE(o.gpay_amount::float, CASE WHEN o.payment_method = 'gpay' THEN o.grand_total::float ELSE 0 END) AS gpay_amount,
         o.created_at,
         json_build_object('name', c.name, 'phone', c.phone) AS customers,
         COALESCE(

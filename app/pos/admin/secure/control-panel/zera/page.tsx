@@ -19,6 +19,9 @@ import {
   List,
   Globe,
   Zap,
+  Smartphone,
+  CheckCircle2,
+  Wallet,
   Menu,
   Printer,
   History,
@@ -75,6 +78,9 @@ type CompletedOrder = {
   deliveryFee: number;
   grandTotal: number;
   cashReceived: number;
+  paymentMethod: "cash" | "gpay" | "split";
+  cashAmount: number;
+  gpayAmount: number;
   date: string;
   status: "Completed" | "Pending";
 };
@@ -307,6 +313,9 @@ export default function POSBilling() {
   );
   const [deliveryFee, setDeliveryFee] = useState<number>(0);
   const [cashReceived, setCashReceived] = useState<number>(0);
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "gpay" | "split">("cash");
+  const [splitCashAmount, setSplitCashAmount] = useState<number | "">("");
+  const [splitGpayAmount, setSplitGpayAmount] = useState<number | "">("");
   const [applyGST, setApplyGST] = useState<boolean>(false);
   const [gstPercentage, setGstPercentage] = useState<number>(18);
   const [activeInvoiceId, setActiveInvoiceId] = useState<string | null>(null);
@@ -434,6 +443,9 @@ export default function POSBilling() {
             deliveryFee: o.delivery_fee,
             grandTotal: o.grand_total,
             cashReceived: o.cash_received,
+            paymentMethod: (o.payment_method as "cash" | "gpay" | "split") || "cash",
+            cashAmount: typeof o.cash_amount === "number" ? o.cash_amount : (o.payment_method === "gpay" ? 0 : o.grand_total),
+            gpayAmount: typeof o.gpay_amount === "number" ? o.gpay_amount : (o.payment_method === "gpay" ? o.grand_total : 0),
             date: o.created_at,
             status: o.status === "COMPLETED" ? "Completed" : "Pending",
           })),
@@ -675,7 +687,21 @@ export default function POSBilling() {
   const gstAmount = applyGST ? (subtotal - calculatedDiscount) * (gstPercentage / 100) : 0;
   const grandTotal = Math.max(0, subtotal - calculatedDiscount) + deliveryFee + gstAmount;
 
-  const sendWhatsAppMessage = (phone: string, orderId: string, localSubtotal: number, localCalculatedDiscount: number, localGrandTotal: number, localGstAmount: number, applyGSTFlag: boolean, gstPct: number, delivFee: number, appType: 'personal' | 'business' = 'personal') => {
+  const sendWhatsAppMessage = (
+    phone: string,
+    orderId: string,
+    localSubtotal: number,
+    localCalculatedDiscount: number,
+    localGrandTotal: number,
+    localGstAmount: number,
+    applyGSTFlag: boolean,
+    gstPct: number,
+    delivFee: number,
+    appType: 'personal' | 'business' = 'personal',
+    payMethod: 'cash' | 'gpay' | 'split' = 'cash',
+    cashAmt: number = 0,
+    gpayAmt: number = 0,
+  ) => {
     const domain = window.location.origin;
     const invoiceUrl = `${domain}/invoice/${orderId}`;
     const shopEmoji = String.fromCodePoint(0x2728);
@@ -688,6 +714,13 @@ export default function POSBilling() {
     if (localCalculatedDiscount > 0) message += `Discount Applied: -₹${localCalculatedDiscount.toFixed(2)}\n`;
     if (applyGSTFlag && localGstAmount > 0) message += `GST (${gstPct}%): ₹${localGstAmount.toFixed(2)}\n`;
     if (delivFee > 0) message += `Delivery Fee: ₹${delivFee.toFixed(2)}\n`;
+
+    const paymentDesc = payMethod === 'split'
+      ? `Split — Cash ₹${(cashAmt || 0).toFixed(2)} + GPay ₹${(gpayAmt || 0).toFixed(2)}`
+      : payMethod === 'gpay'
+      ? `GPay — ₹${localGrandTotal.toFixed(2)}`
+      : `Cash — ₹${localGrandTotal.toFixed(2)}`;
+    message += `Payment: ${paymentDesc}\n`;
     message += `\n${moneyEmoji} *Total Amount: ₹${localGrandTotal.toFixed(2)}*\n\n`;
     message += `${receiptEmoji} View and download your detailed digital receipt here:\n${invoiceUrl}`;
     const encodedMessage = encodeURIComponent(message);
@@ -740,6 +773,41 @@ export default function POSBilling() {
     if (hasTooExpensiveItem) {
       alert("One or more item prices exceed the maximum system limit of ₹99,999,999.99. Please correct the item prices.");
       return;
+    }
+
+    // Payment method breakdown & validation
+    let finalCashAmount = 0;
+    let finalGpayAmount = 0;
+    let finalCashReceived = cashReceived;
+
+    if (paymentMethod === "cash") {
+      finalCashAmount = localGrandTotal;
+      finalGpayAmount = 0;
+      finalCashReceived = cashReceived > 0 ? cashReceived : localGrandTotal;
+    } else if (paymentMethod === "gpay") {
+      finalCashAmount = 0;
+      finalGpayAmount = localGrandTotal;
+      finalCashReceived = cashReceived > 0 ? cashReceived : localGrandTotal;
+    } else if (paymentMethod === "split") {
+      const cAmt = typeof splitCashAmount === "number" ? splitCashAmount : 0;
+      const gAmt = typeof splitGpayAmount === "number" ? splitGpayAmount : 0;
+
+      if (cAmt < 0 || gAmt < 0) {
+        alert("Payment amounts cannot be negative.");
+        return;
+      }
+
+      if (Math.abs((cAmt + gAmt) - localGrandTotal) > 0.01) {
+        const diff = (localGrandTotal - (cAmt + gAmt)).toFixed(2);
+        alert(
+          `Cannot complete sale: Cash Amount (₹${cAmt.toFixed(2)}) + GPay Amount (₹${gAmt.toFixed(2)}) must equal Grand Total (₹${localGrandTotal.toFixed(2)}).\nRemaining to allocate: ₹${diff}.`
+        );
+        return;
+      }
+
+      finalCashAmount = cAmt;
+      finalGpayAmount = gAmt;
+      finalCashReceived = cashReceived > 0 ? cashReceived : cAmt;
     }
 
     const currentYear = new Date().getFullYear();
@@ -809,33 +877,15 @@ export default function POSBilling() {
       discountAmount: localCalculatedDiscount,
       deliveryFee: deliveryFee,
       grandTotal: localGrandTotal,
-      cashReceived: cashReceived,
+      cashReceived: finalCashReceived,
+      paymentMethod: paymentMethod,
+      cashAmount: finalCashAmount,
+      gpayAmount: finalGpayAmount,
       items: dbItems,
     });
 
     if (!saveRes.success) {
       console.error("Error creating order:", saveRes.error);
-    }
-
-    // Order saved — now show the Bill Generated modal instead of opening WhatsApp immediately
-
-    const localItems = [
-      ...itemsToSave.map((i) => ({
-        id: i.id,
-        name: i.name,
-        desc: i.desc,
-        price: i.price,
-        qty: i.qty,
-      })),
-    ];
-    if (applyGST && gstAmount > 0) {
-      localItems.push({
-        id: `gst-${Date.now()}`,
-        name: `GST (${gstPercentage}%)`,
-        desc: "Tax",
-        price: gstAmount,
-        qty: 1,
-      });
     }
 
     const newOrder: CompletedOrder = {
@@ -853,7 +903,10 @@ export default function POSBilling() {
       discountValue: discountValue,
       deliveryFee,
       grandTotal,
-      cashReceived,
+      cashReceived: finalCashReceived,
+      paymentMethod: paymentMethod,
+      cashAmount: finalCashAmount,
+      gpayAmount: finalGpayAmount,
       date: new Date().toISOString(),
       status: "Completed",
     };
@@ -872,6 +925,9 @@ export default function POSBilling() {
     setDiscountValue(0);
     setDeliveryFee(0);
     setCashReceived(0);
+    setPaymentMethod("cash");
+    setSplitCashAmount("");
+    setSplitGpayAmount("");
     setApplyGST(false);
     setGstPercentage(18);
     setLastCompletedOrder(null);
@@ -905,6 +961,13 @@ export default function POSBilling() {
       const gstLabel = gstItem ? gstItem.name : "GST";
       message += `*${gstLabel}:* ₹${calculatedGst.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
     }
+
+    const paymentDesc = order.paymentMethod === 'split'
+      ? `Split — Cash ₹${(order.cashAmount || 0).toFixed(2)} + GPay ₹${(order.gpayAmount || 0).toFixed(2)}`
+      : order.paymentMethod === 'gpay'
+      ? `GPay — ₹${order.grandTotal.toFixed(2)}`
+      : `Cash — ₹${order.grandTotal.toFixed(2)}`;
+    message += `*Payment:* ${paymentDesc}\n`;
     
     message += `\n${moneyEmoji} *Total Amount:* ₹${order.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n\n`;
     message += `${receiptEmoji} View and download your detailed digital receipt here:\n${invoiceUrl}`;
@@ -1004,6 +1067,16 @@ export default function POSBilling() {
   const offlineRevenue = analyticsFilteredOrders
     .filter((o) => o.source === "OFFLINE")
     .reduce((acc, o) => acc + o.grandTotal, 0);
+
+  // Payment method revenues across all bills in the selected period (including split orders)
+  const cashRevenue = analyticsFilteredOrders.reduce(
+    (acc, o) => acc + (o.cashAmount !== undefined ? o.cashAmount : (o.paymentMethod === "gpay" ? 0 : o.grandTotal)),
+    0,
+  );
+  const gpayRevenue = analyticsFilteredOrders.reduce(
+    (acc, o) => acc + (o.gpayAmount !== undefined ? o.gpayAmount : (o.paymentMethod === "gpay" ? o.grandTotal : 0)),
+    0,
+  );
 
   // Top items by revenue in analyticsFilteredOrders
   const itemSales: Record<
@@ -1137,6 +1210,15 @@ export default function POSBilling() {
   const todayOfflineRevenue = todayOrders
     .filter((o) => o.source === "OFFLINE")
     .reduce((acc, o) => acc + o.grandTotal, 0);
+
+  const todayCashRevenue = todayOrders.reduce(
+    (acc, o) => acc + (o.cashAmount !== undefined ? o.cashAmount : (o.paymentMethod === "gpay" ? 0 : o.grandTotal)),
+    0,
+  );
+  const todayGpayRevenue = todayOrders.reduce(
+    (acc, o) => acc + (o.gpayAmount !== undefined ? o.gpayAmount : (o.paymentMethod === "gpay" ? o.grandTotal : 0)),
+    0,
+  );
 
   const todayItemsSold = todayOrders.reduce(
     (acc, o) => acc + o.items.reduce((sum, item) => {
@@ -1385,6 +1467,9 @@ export default function POSBilling() {
       "Customer Name           ",
       "Customer Phone          ",
       "Source        ",
+      "Payment Method",
+      "Cash Amount   ",
+      "GPay Amount   ",
       "Subtotal      ",
       "Discount      ",
       "Delivery Fee  ",
@@ -1417,6 +1502,9 @@ export default function POSBilling() {
         o.customerName,
         formattedPhone,
         o.source,
+        o.paymentMethod || "cash",
+        o.cashAmount !== undefined ? o.cashAmount : (o.paymentMethod === "gpay" ? 0 : o.grandTotal),
+        o.gpayAmount !== undefined ? o.gpayAmount : (o.paymentMethod === "gpay" ? o.grandTotal : 0),
         o.subtotal,
         o.discount,
         o.deliveryFee,
@@ -2219,56 +2307,319 @@ export default function POSBilling() {
                       </span>
                     </div>
 
-                    {/* Cash Payment */}
-                    <div className="bg-[#FFFFFF]/40 border border-black/10 rounded-xl p-4 mt-2">
-                      <span className="block text-[9px] font-bold text-[#000000] uppercase tracking-wider mb-0.5">
-                        Cash Payment
-                      </span>
-                      <label className="block text-[10px] font-bold text-[#000000] mb-2.5">
-                        Amount Received (₹)
-                      </label>
-                      <input
-                        type="number"
-                        className="w-full bg-white border border-black/10 focus:border-[#8C6D23] rounded-lg px-3 py-2 text-base font-bold text-[#000000] placeholder:text-[#000000] focus:outline-none transition-colors"
-                        value={cashReceived || ""}
-                        onWheel={(e) => e.currentTarget.blur()}
-                        onChange={(e) =>
-                          setCashReceived(parseFloat(e.target.value) || 0)
-                        }
-                        placeholder="0.00"
-                      />
+                    {/* Payment Method Selector & Inputs */}
+                    <div className="bg-[#FFFFFF]/40 border border-black/10 rounded-xl p-4 mt-2 space-y-3">
+                      <div>
+                        <span className="block text-[9px] font-bold text-[#000000] uppercase tracking-wider mb-2">
+                          Payment Method
+                        </span>
+                        <div className="grid grid-cols-3 gap-1.5 p-1 bg-black/5 rounded-xl border border-black/10">
+                          <button
+                            type="button"
+                            onClick={() => setPaymentMethod("cash")}
+                            className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                              paymentMethod === "cash"
+                                ? "bg-black text-[#D4AF37] shadow-sm font-extrabold"
+                                : "bg-transparent text-neutral-600 hover:text-black"
+                            }`}
+                          >
+                            <IndianRupee className="w-3.5 h-3.5" />
+                            Cash
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPaymentMethod("gpay")}
+                            className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                              paymentMethod === "gpay"
+                                ? "bg-black text-[#D4AF37] shadow-sm font-extrabold"
+                                : "bg-transparent text-neutral-600 hover:text-black"
+                            }`}
+                          >
+                            <Smartphone className="w-3.5 h-3.5" />
+                            GPay
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPaymentMethod("split");
+                              if (splitCashAmount === "" && splitGpayAmount === "") {
+                                const half = +(grandTotal / 2).toFixed(2);
+                                setSplitCashAmount(half);
+                                setSplitGpayAmount(+(grandTotal - half).toFixed(2));
+                              }
+                            }}
+                            className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                              paymentMethod === "split"
+                                ? "bg-black text-[#D4AF37] shadow-sm font-extrabold"
+                                : "bg-transparent text-neutral-600 hover:text-black"
+                            }`}
+                          >
+                            <Percent className="w-3.5 h-3.5" />
+                            Split
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Cash Payment Mode */}
+                      {paymentMethod === "cash" && (
+                        <div>
+                          <label className="block text-[10px] font-bold text-[#000000] mb-1.5">
+                            Amount Received (₹)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            className="w-full bg-white border border-black/10 focus:border-[#8C6D23] rounded-lg px-3 py-2 text-base font-bold text-[#000000] placeholder:text-[#000000] focus:outline-none transition-colors"
+                            value={cashReceived || ""}
+                            onWheel={(e) => e.currentTarget.blur()}
+                            onChange={(e) =>
+                              setCashReceived(Math.max(0, parseFloat(e.target.value) || 0))
+                            }
+                            placeholder="0.00"
+                          />
+                        </div>
+                      )}
+
+                      {/* GPay Payment Mode */}
+                      {paymentMethod === "gpay" && (
+                        <div>
+                          <label className="block text-[10px] font-bold text-[#000000] mb-1.5">
+                            Amount Received (₹)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            className="w-full bg-white border border-black/10 focus:border-[#8C6D23] rounded-lg px-3 py-2 text-base font-bold text-[#000000] placeholder:text-[#000000] focus:outline-none transition-colors"
+                            value={cashReceived || ""}
+                            onWheel={(e) => e.currentTarget.blur()}
+                            onChange={(e) =>
+                              setCashReceived(Math.max(0, parseFloat(e.target.value) || 0))
+                            }
+                            placeholder={grandTotal > 0 ? grandTotal.toFixed(2) : "0.00"}
+                          />
+                          <div className="mt-1.5 flex items-center justify-between text-[10px] text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1.5 font-bold">
+                            <span className="flex items-center gap-1">
+                              <Smartphone className="w-3 h-3" />
+                              Full UPI / GPay payment: ₹{grandTotal.toFixed(2)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setCashReceived(grandTotal)}
+                              className="underline hover:text-blue-900 cursor-pointer text-[9px] uppercase"
+                            >
+                              Auto-Fill
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Split Payment Mode */}
+                      {paymentMethod === "split" && (
+                        <div className="space-y-2.5">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-bold text-[#000000] mb-1">
+                                Cash Amount (₹)
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                className="w-full bg-white border border-black/10 focus:border-[#8C6D23] rounded-lg px-3 py-2 text-sm font-bold text-[#000000] placeholder:text-neutral-400 focus:outline-none transition-colors"
+                                value={splitCashAmount === "" ? "" : splitCashAmount}
+                                onWheel={(e) => e.currentTarget.blur()}
+                                onChange={(e) => {
+                                  if (e.target.value === "") {
+                                    setSplitCashAmount("");
+                                    return;
+                                  }
+                                  const val = parseFloat(e.target.value);
+                                  if (isNaN(val) || val < 0) return;
+                                  setSplitCashAmount(val);
+                                  const autoGpay = Math.max(0, +(grandTotal - val).toFixed(2));
+                                  setSplitGpayAmount(autoGpay);
+                                }}
+                                placeholder="0.00"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-[#000000] mb-1">
+                                GPay Amount (₹)
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                className="w-full bg-white border border-black/10 focus:border-[#8C6D23] rounded-lg px-3 py-2 text-sm font-bold text-[#000000] placeholder:text-neutral-400 focus:outline-none transition-colors"
+                                value={splitGpayAmount === "" ? "" : splitGpayAmount}
+                                onWheel={(e) => e.currentTarget.blur()}
+                                onChange={(e) => {
+                                  if (e.target.value === "") {
+                                    setSplitGpayAmount("");
+                                    return;
+                                  }
+                                  const val = parseFloat(e.target.value);
+                                  if (isNaN(val) || val < 0) return;
+                                  setSplitGpayAmount(val);
+                                  const autoCash = Math.max(0, +(grandTotal - val).toFixed(2));
+                                  setSplitCashAmount(autoCash);
+                                }}
+                                placeholder="0.00"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Split Allocation Status Badge */}
+                          {(() => {
+                            const cVal = typeof splitCashAmount === "number" ? splitCashAmount : 0;
+                            const gVal = typeof splitGpayAmount === "number" ? splitGpayAmount : 0;
+                            const totalAlloc = +(cVal + gVal).toFixed(2);
+                            const remaining = +(grandTotal - totalAlloc).toFixed(2);
+
+                            if (Math.abs(remaining) <= 0.01 && grandTotal > 0) {
+                              return (
+                                <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5 text-[10px] text-emerald-800 font-bold">
+                                  <span className="flex items-center gap-1">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                    Split balanced to ₹{grandTotal.toFixed(2)}
+                                  </span>
+                                  <span className="font-mono">
+                                    ₹{cVal.toFixed(2)} + ₹{gVal.toFixed(2)}
+                                  </span>
+                                </div>
+                              );
+                            } else if (remaining > 0.01) {
+                              return (
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between bg-amber-50 border border-amber-300 rounded-lg px-2.5 py-1.5 text-[10px] text-amber-900 font-bold">
+                                    <span className="flex items-center gap-1.5">
+                                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                                      Remaining to allocate:
+                                    </span>
+                                    <span className="font-black text-amber-950 font-mono text-xs">
+                                      ₹{remaining.toFixed(2)}
+                                    </span>
+                                  </div>
+                                  <div className="flex gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const half = +(grandTotal / 2).toFixed(2);
+                                        setSplitCashAmount(half);
+                                        setSplitGpayAmount(+(grandTotal - half).toFixed(2));
+                                      }}
+                                      className="flex-1 py-1 text-[9px] font-bold bg-white border border-black/15 hover:border-[#8C6D23] rounded-md text-[#000000] cursor-pointer"
+                                    >
+                                      Split 50/50
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSplitGpayAmount(Math.max(0, +(grandTotal - cVal).toFixed(2)));
+                                      }}
+                                      className="flex-1 py-1 text-[9px] font-bold bg-white border border-black/15 hover:border-[#8C6D23] rounded-md text-[#000000] cursor-pointer"
+                                    >
+                                      + Remaining to GPay
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <div className="flex items-center justify-between bg-red-50 border border-red-300 rounded-lg px-2.5 py-1.5 text-[10px] text-red-900 font-bold">
+                                  <span>Over-allocated by:</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-black font-mono text-xs text-red-950">
+                                      ₹{(-remaining).toFixed(2)}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const half = +(grandTotal / 2).toFixed(2);
+                                        setSplitCashAmount(half);
+                                        setSplitGpayAmount(+(grandTotal - half).toFixed(2));
+                                      }}
+                                      className="px-2 py-0.5 text-[9px] font-bold bg-white border border-red-300 text-red-800 rounded cursor-pointer"
+                                    >
+                                      Auto-Balance
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            }
+                          })()}
+
+                          {/* Cash Tendered for Change Return in Split Mode */}
+                          {typeof splitCashAmount === "number" && splitCashAmount > 0 && (
+                            <div className="pt-1 border-t border-black/5">
+                              <label className="block text-[9px] font-bold text-neutral-600 mb-1">
+                                Cash Tendered by Customer (for change return)
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                className="w-full bg-white border border-black/10 focus:border-[#8C6D23] rounded-lg px-2.5 py-1.5 text-xs font-bold text-[#000000] placeholder:text-neutral-400 focus:outline-none transition-colors"
+                                value={cashReceived || ""}
+                                onWheel={(e) => e.currentTarget.blur()}
+                                onChange={(e) =>
+                                  setCashReceived(Math.max(0, parseFloat(e.target.value) || 0))
+                                }
+                                placeholder={splitCashAmount.toFixed(2)}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
-                    {/* Change Return */}
-                    {cashReceived > 0 && (
-                      <div className="flex justify-between items-center bg-white border border-black/10 rounded-lg p-3 text-xs">
-                        <span className="font-bold text-[#000000] uppercase tracking-[0.05em]">
-                          Change Return
-                        </span>
-                        <span
-                          className={`font-black text-sm ${cashReceived >= grandTotal ? "text-[#00A86B]" : "text-[#E11D48]"}`}
-                        >
-                          ₹
-                          {Math.max(
-                            0,
-                            cashReceived - grandTotal,
-                          ).toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                          })}
-                        </span>
-                      </div>
-                    )}
+                    {/* Change Return (For Cash, GPay, or Split cash portion) */}
+                    {(() => {
+                      const relevantDue = paymentMethod === "split"
+                        ? (typeof splitCashAmount === "number" ? splitCashAmount : 0)
+                        : grandTotal;
+                      if (cashReceived > relevantDue && relevantDue > 0) {
+                        return (
+                          <div className="flex justify-between items-center bg-white border border-black/10 rounded-lg p-3 text-xs">
+                            <span className="font-bold text-[#000000] uppercase tracking-[0.05em]">
+                              Change Return
+                            </span>
+                            <span className="font-black text-sm text-[#00A86B]">
+                              ₹
+                              {(cashReceived - relevantDue).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                              })}
+                            </span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
 
                     {/* Complete Sale Button */}
-                    <button
-                      onClick={() => handleCompleteSale('business')}
-                      className="w-full mt-2 bg-[#10B981] hover:bg-[#059669] text-white py-3.5 rounded-lg font-bold text-[11px] uppercase tracking-[0.1em] flex items-center justify-center gap-2.5 transition-transform active:scale-[0.98] shadow-[0_4px_14px_rgba(16,185,129,0.4)] cursor-pointer"
-                    >
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20 6L9 17l-5-5" />
-                      </svg>
-                      Complete Sale
-                    </button>
+                    {(() => {
+                      const numCash = typeof splitCashAmount === "number" ? splitCashAmount : 0;
+                      const numGpay = typeof splitGpayAmount === "number" ? splitGpayAmount : 0;
+                      const isSplitUnbalanced =
+                        paymentMethod === "split" &&
+                        (Math.abs(grandTotal - (numCash + numGpay)) > 0.01 || grandTotal <= 0);
+
+                      return (
+                        <button
+                          onClick={() => handleCompleteSale('business')}
+                          disabled={isSplitUnbalanced}
+                          className={`w-full mt-2 py-3.5 rounded-lg font-bold text-[11px] uppercase tracking-[0.1em] flex items-center justify-center gap-2.5 transition-transform active:scale-[0.98] shadow-[0_4px_14px_rgba(16,185,129,0.4)] ${
+                            isSplitUnbalanced
+                              ? "bg-neutral-400 text-neutral-100 cursor-not-allowed opacity-60 shadow-none"
+                              : "bg-[#10B981] hover:bg-[#059669] text-white cursor-pointer"
+                          }`}
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M20 6L9 17l-5-5" />
+                          </svg>
+                          {isSplitUnbalanced
+                            ? `Allocate Full Total (₹${Math.abs(grandTotal - (numCash + numGpay)).toFixed(2)} diff)`
+                            : "Complete Sale"}
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -2302,14 +2653,48 @@ export default function POSBilling() {
                   <span className="text-[#374151] font-semibold">Grand Total</span>
                   <span className="font-bold text-[#000000]">₹{lastCompletedOrder.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                 </div>
-                <div className="flex justify-between items-center text-sm mb-3">
-                  <span className="text-[#374151] font-semibold">Amount Received</span>
-                  <span className="font-bold text-[#000000]">₹{lastCompletedOrder.cashReceived.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                <div className="flex justify-between items-center text-sm mb-2">
+                  <span className="text-[#374151] font-semibold">Payment</span>
+                  <span className="font-bold text-[#000000]">
+                    {lastCompletedOrder.paymentMethod === 'split'
+                      ? `Split — Cash ₹${lastCompletedOrder.cashAmount.toFixed(2)} + GPay ₹${lastCompletedOrder.gpayAmount.toFixed(2)}`
+                      : (lastCompletedOrder.paymentMethod === 'gpay' ? `GPay — ₹${lastCompletedOrder.grandTotal.toFixed(2)}` : `Cash — ₹${lastCompletedOrder.grandTotal.toFixed(2)}`)}
+                  </span>
                 </div>
-                <div className="flex justify-between items-center bg-[#EFF6FF] border border-[#BFDBFE] rounded-lg px-4 py-3">
-                  <span className="text-[#1D4ED8] font-bold text-sm">Balance Returned</span>
-                  <span className="text-[#1D4ED8] font-black text-base">₹{Math.max(0, lastCompletedOrder.cashReceived - lastCompletedOrder.grandTotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                </div>
+
+                {lastCompletedOrder.paymentMethod === 'split' && (
+                  <div className="bg-white border border-black/10 rounded-lg p-2.5 mb-2.5 text-xs space-y-1">
+                    <div className="flex justify-between text-[#374151]">
+                      <span className="font-semibold">Cash Portion:</span>
+                      <span className="font-bold text-[#000000]">₹{lastCompletedOrder.cashAmount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-[#374151]">
+                      <span className="font-semibold">GPay / UPI Portion:</span>
+                      <span className="font-bold text-[#000000]">₹{lastCompletedOrder.gpayAmount.toFixed(2)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {lastCompletedOrder.cashReceived > 0 && lastCompletedOrder.paymentMethod !== 'gpay' && (
+                  <div className="flex justify-between items-center text-sm mb-2">
+                    <span className="text-[#374151] font-semibold">Cash Received</span>
+                    <span className="font-bold text-[#000000]">₹{lastCompletedOrder.cashReceived.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                {(() => {
+                  const targetDue = lastCompletedOrder.paymentMethod === 'split' ? lastCompletedOrder.cashAmount : lastCompletedOrder.grandTotal;
+                  if (lastCompletedOrder.cashReceived > targetDue && targetDue > 0) {
+                    return (
+                      <div className="flex justify-between items-center bg-[#EFF6FF] border border-[#BFDBFE] rounded-lg px-4 py-3 mt-1">
+                        <span className="text-[#1D4ED8] font-bold text-sm">Balance Returned</span>
+                        <span className="text-[#1D4ED8] font-black text-base">
+                          ₹{(lastCompletedOrder.cashReceived - targetDue).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               {/* Action Buttons */}
@@ -2333,7 +2718,21 @@ export default function POSBilling() {
                     const localDisc = o.discount;
                     const localGst = o.grandTotal - (o.subtotal - o.discount + o.deliveryFee);
                     const applyGSTFlag = localGst > 0.1;
-                    sendWhatsAppMessage(o.customerPhone, o.id, o.subtotal, localDisc, o.grandTotal, applyGSTFlag ? localGst : 0, applyGSTFlag, 0, o.deliveryFee, 'business');
+                    sendWhatsAppMessage(
+                      o.customerPhone,
+                      o.id,
+                      o.subtotal,
+                      localDisc,
+                      o.grandTotal,
+                      applyGSTFlag ? localGst : 0,
+                      applyGSTFlag,
+                      0,
+                      o.deliveryFee,
+                      'business',
+                      o.paymentMethod,
+                      o.cashAmount,
+                      o.gpayAmount,
+                    );
                   }}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#10B981] hover:bg-[#059669] text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer shadow-[0_2px_8px_rgba(16,185,129,0.35)]"
                 >
@@ -2560,7 +2959,7 @@ export default function POSBilling() {
                               Source
                             </th>
                             <th className="p-4 text-[10px] font-bold text-[#000000] uppercase tracking-widest">
-                              Total Due
+                              Payment / Total
                             </th>
                             <th className="p-4 text-[10px] font-bold text-[#000000] uppercase tracking-widest text-right">
                               Status
@@ -2589,8 +2988,25 @@ export default function POSBilling() {
                                   {order.source}
                                 </span>
                               </td>
-                              <td className="p-4 text-sm font-black text-[#8C6D23]">
-                                ₹{order.grandTotal.toLocaleString()}
+                              <td className="p-4">
+                                <div className="text-sm font-black text-[#8C6D23]">
+                                  ₹{order.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </div>
+                                <div className="mt-1">
+                                  {order.paymentMethod === 'split' ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#D4AF37]/15 text-[#8C6D23] border border-[#D4AF37]/30 whitespace-nowrap">
+                                      Split: ₹{order.cashAmount.toFixed(0)} Cash + ₹{order.gpayAmount.toFixed(0)} GPay
+                                    </span>
+                                  ) : order.paymentMethod === 'gpay' ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                      GPay
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                      Cash
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="p-4 text-right">
                                 <div className="flex flex-col sm:flex-row items-end sm:items-center justify-end gap-2 sm:gap-3">
@@ -3038,8 +3454,8 @@ export default function POSBilling() {
 
             {analyticsSubTab === "revenue" && (
               <>
-                {/* Top 5x2 KPI Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                {/* Top 6 KPI Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-4">
                   {/* Row 1 */}
                   <div className="bg-white border border-black/10 rounded-xl p-4 shadow-sm hover:shadow-md transition-all">
                     <div className="flex justify-between items-start mb-3">
@@ -3051,7 +3467,7 @@ export default function POSBilling() {
                       </div>
                     </div>
                     <div className="text-xl font-black text-[#000000] mb-1">
-                      ₹{totalRevenueAmount.toLocaleString()}
+                      ₹{totalRevenueAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                     <div className="text-[9px] text-[#000000] font-semibold">
                       POS + manual combined
@@ -3085,7 +3501,7 @@ export default function POSBilling() {
                       </div>
                     </div>
                     <div className="text-xl font-black text-[#000000] mb-1">
-                      ₹{offlineRevenue.toLocaleString()}
+                      ₹{offlineRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                     <div className="text-[9px] text-[#000000] font-semibold">
                       Walk-in POS sales
@@ -3102,10 +3518,46 @@ export default function POSBilling() {
                       </div>
                     </div>
                     <div className="text-xl font-black text-[#000000] mb-1">
-                      ₹{onlineRevenue.toLocaleString()}
+                      ₹{onlineRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                     <div className="text-[9px] text-[#000000] font-semibold">
                       Online POS sales
+                    </div>
+                  </div>
+
+                  {/* Cash Revenue Metric */}
+                  <div className="bg-white border border-black/10 rounded-xl p-4 shadow-sm hover:shadow-md transition-all">
+                    <div className="flex justify-between items-start mb-3">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#000000]">
+                        Cash Revenue
+                      </span>
+                      <div className="w-6 h-6 rounded-full bg-[#8C6D23]/10 flex items-center justify-center">
+                        <IndianRupee className="w-3 h-3 text-[#8C6D23]" />
+                      </div>
+                    </div>
+                    <div className="text-xl font-black text-[#000000] mb-1">
+                      ₹{cashRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                    <div className="text-[9px] text-[#000000] font-semibold">
+                      Cash & split cash
+                    </div>
+                  </div>
+
+                  {/* GPay Revenue Metric */}
+                  <div className="bg-white border border-black/10 rounded-xl p-4 shadow-sm hover:shadow-md transition-all">
+                    <div className="flex justify-between items-start mb-3">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#000000]">
+                        GPay Revenue
+                      </span>
+                      <div className="w-6 h-6 rounded-full bg-[#3B82F6]/10 flex items-center justify-center">
+                        <Smartphone className="w-3 h-3 text-[#3B82F6]" />
+                      </div>
+                    </div>
+                    <div className="text-xl font-black text-[#000000] mb-1">
+                      ₹{gpayRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                    <div className="text-[9px] text-[#000000] font-semibold">
+                      GPay/UPI & split UPI
                     </div>
                   </div>
                 </div>
@@ -3843,8 +4295,36 @@ export default function POSBilling() {
                       Total{" "}
                     </span>
                     <span className="text-[#8C6D23] font-black">
-                      ₹{selectedOrder.grandTotal.toLocaleString()}
+                      ₹{selectedOrder.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </span>
+                  </div>
+
+                  <div className="border-t border-black/10 pt-3 mt-3 space-y-2">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-[#000000] font-bold uppercase tracking-wider text-xs">
+                        Payment Method
+                      </span>
+                      <span className="font-extrabold text-[#000000]">
+                        {selectedOrder.paymentMethod === "split"
+                          ? `Split — Cash ₹${selectedOrder.cashAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })} + GPay ₹${selectedOrder.gpayAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                          : selectedOrder.paymentMethod === "gpay"
+                          ? `GPay — ₹${selectedOrder.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                          : `Cash — ₹${selectedOrder.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                      </span>
+                    </div>
+
+                    {selectedOrder.paymentMethod === "split" && (
+                      <div className="bg-[#FAF8F5] border border-black/10 rounded-xl p-3 text-xs space-y-1">
+                        <div className="flex justify-between text-[#000000]">
+                          <span className="font-semibold">Cash Portion:</span>
+                          <span className="font-bold">₹{selectedOrder.cashAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="flex justify-between text-[#000000]">
+                          <span className="font-semibold">GPay / UPI Portion:</span>
+                          <span className="font-bold">₹{selectedOrder.gpayAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

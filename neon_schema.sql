@@ -40,6 +40,9 @@ CREATE TABLE IF NOT EXISTS orders (
     delivery_fee NUMERIC(10,2) DEFAULT 0.00,
     grand_total NUMERIC(10,2) NOT NULL DEFAULT 0.00,
     cash_received NUMERIC(10,2) DEFAULT 0.00,
+    payment_method TEXT NOT NULL DEFAULT 'cash', -- 'cash' | 'gpay' | 'split'
+    cash_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    gpay_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
