@@ -321,6 +321,8 @@ export default function POSBilling() {
   const [activeInvoiceId, setActiveInvoiceId] = useState<string | null>(null);
   const [showBillGenerated, setShowBillGenerated] = useState(false);
   const [lastCompletedOrder, setLastCompletedOrder] = useState<CompletedOrder | null>(null);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  const isSubmittingOrderRef = useRef(false);
 
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -735,187 +737,225 @@ export default function POSBilling() {
   };
 
   const handleCompleteSale = async (appType: 'personal' | 'business' = 'personal') => {
-    if (!customerPhone || customerPhone.length !== 10) {
-      alert(
-        "Please enter a valid 10-digit mobile contact number to send the bill.",
-      );
+    // 0. Synchronous Guard: prevent multiple concurrent clicks or taps
+    if (isSubmittingOrderRef.current) {
+      console.warn("Sale completion already in progress, ignoring duplicate trigger.");
       return;
     }
-    // Note: appType param kept for backward compatibility
+    isSubmittingOrderRef.current = true;
+    setIsSubmittingOrder(true);
 
-    // Strict validation: every single row must have a name and a price > 0
-    const hasInvalidItem = items.some(i => !i.name || i.name.trim() === "" || i.price === undefined || i.price <= 0);
-    
-    if (hasInvalidItem || items.length === 0) {
-      alert("Please ensure all items have a valid name and a price greater than 0. Remove any empty rows before proceeding.");
-      return;
-    }
-    const itemsToSave = items;
-
-    // Recalculate values locally to avoid React state lag issues
-    const localSubtotal = itemsToSave.reduce((acc, item) => acc + item.price * item.qty, 0);
-    const localCalculatedDiscount =
-      discountType === "percent"
-        ? localSubtotal * (discountValue / 100)
-        : discountValue;
-    const localGstAmount = applyGST ? (localSubtotal - localCalculatedDiscount) * (gstPercentage / 100) : 0;
-    const localGrandTotal = Math.max(0, localSubtotal - localCalculatedDiscount) + deliveryFee + localGstAmount;
-
-    // Validate totals against PostgreSQL numeric(10,2) overflow limit (99,999,999.99)
-    const MAX_LIMIT = 99999999.99;
-    if (localSubtotal > MAX_LIMIT || localGrandTotal > MAX_LIMIT || cashReceived > MAX_LIMIT || deliveryFee > MAX_LIMIT) {
-      alert("The order totals exceed the maximum allowable system limit of ₹99,999,999.99. Please adjust the item prices, delivery fee, or cash received.");
-      return;
-    }
-
-    // Validate individual item prices
-    const hasTooExpensiveItem = itemsToSave.some((i) => i.price > MAX_LIMIT || (i.price * i.qty) > MAX_LIMIT);
-    if (hasTooExpensiveItem) {
-      alert("One or more item prices exceed the maximum system limit of ₹99,999,999.99. Please correct the item prices.");
-      return;
-    }
-
-    // Payment method breakdown & validation
-    let finalCashAmount = 0;
-    let finalGpayAmount = 0;
-    let finalCashReceived = cashReceived;
-
-    if (paymentMethod === "cash") {
-      finalCashAmount = localGrandTotal;
-      finalGpayAmount = 0;
-      finalCashReceived = cashReceived > 0 ? cashReceived : localGrandTotal;
-    } else if (paymentMethod === "gpay") {
-      finalCashAmount = 0;
-      finalGpayAmount = localGrandTotal;
-      finalCashReceived = cashReceived > 0 ? cashReceived : localGrandTotal;
-    } else if (paymentMethod === "split") {
-      const cAmt = typeof splitCashAmount === "number" ? splitCashAmount : 0;
-      const gAmt = typeof splitGpayAmount === "number" ? splitGpayAmount : 0;
-
-      if (cAmt < 0 || gAmt < 0) {
-        alert("Payment amounts cannot be negative.");
-        return;
-      }
-
-      if (Math.abs((cAmt + gAmt) - localGrandTotal) > 0.01) {
-        const diff = (localGrandTotal - (cAmt + gAmt)).toFixed(2);
+    try {
+      if (!customerPhone || customerPhone.length !== 10) {
         alert(
-          `Cannot complete sale: Cash Amount (₹${cAmt.toFixed(2)}) + GPay Amount (₹${gAmt.toFixed(2)}) must equal Grand Total (₹${localGrandTotal.toFixed(2)}).\nRemaining to allocate: ₹${diff}.`
+          "Please enter a valid 10-digit mobile contact number to send the bill.",
         );
         return;
       }
+      // Note: appType param kept for backward compatibility
 
-      finalCashAmount = cAmt;
-      finalGpayAmount = gAmt;
-      finalCashReceived = cashReceived > 0 ? cashReceived : cAmt;
-    }
+      // Strict validation: every single row must have a name and a price > 0
+      const hasInvalidItem = items.some(i => !i.name || i.name.trim() === "" || i.price === undefined || i.price <= 0);
+      
+      if (hasInvalidItem || items.length === 0) {
+        alert("Please ensure all items have a valid name and a price greater than 0. Remove any empty rows before proceeding.");
+        return;
+      }
+      const itemsToSave = items;
 
-    const currentYear = new Date().getFullYear();
-    let newOrderId = "";
-    let isUnique = false;
-    let attempts = 0;
+      // Recalculate values locally to avoid React state lag issues
+      const localSubtotal = itemsToSave.reduce((acc, item) => acc + item.price * item.qty, 0);
+      const localCalculatedDiscount =
+        discountType === "percent"
+          ? localSubtotal * (discountValue / 100)
+          : discountValue;
+      const localGstAmount = applyGST ? (localSubtotal - localCalculatedDiscount) * (gstPercentage / 100) : 0;
+      const localGrandTotal = Math.max(0, localSubtotal - localCalculatedDiscount) + deliveryFee + localGstAmount;
 
-    try {
-      while (!isUnique && attempts < 10) {
+      // Validate totals against PostgreSQL numeric(10,2) overflow limit (99,999,999.99)
+      const MAX_LIMIT = 99999999.99;
+      if (localSubtotal > MAX_LIMIT || localGrandTotal > MAX_LIMIT || cashReceived > MAX_LIMIT || deliveryFee > MAX_LIMIT) {
+        alert("The order totals exceed the maximum allowable system limit of ₹99,999,999.99. Please adjust the item prices, delivery fee, or cash received.");
+        return;
+      }
+
+      // Validate individual item prices
+      const hasTooExpensiveItem = itemsToSave.some((i) => i.price > MAX_LIMIT || (i.price * i.qty) > MAX_LIMIT);
+      if (hasTooExpensiveItem) {
+        alert("One or more item prices exceed the maximum system limit of ₹99,999,999.99. Please correct the item prices.");
+        return;
+      }
+
+      // Payment method breakdown & validation
+      let finalCashAmount = 0;
+      let finalGpayAmount = 0;
+      let finalCashReceived = cashReceived;
+
+      if (paymentMethod === "cash") {
+        finalCashAmount = localGrandTotal;
+        finalGpayAmount = 0;
+        finalCashReceived = cashReceived > 0 ? cashReceived : localGrandTotal;
+      } else if (paymentMethod === "gpay") {
+        finalCashAmount = 0;
+        finalGpayAmount = localGrandTotal;
+        finalCashReceived = cashReceived > 0 ? cashReceived : localGrandTotal;
+      } else if (paymentMethod === "split") {
+        const cAmt = typeof splitCashAmount === "number" ? splitCashAmount : 0;
+        const gAmt = typeof splitGpayAmount === "number" ? splitGpayAmount : 0;
+
+        if (cAmt < 0 || gAmt < 0) {
+          alert("Payment amounts cannot be negative.");
+          return;
+        }
+
+        if (Math.abs((cAmt + gAmt) - localGrandTotal) > 0.01) {
+          const diff = (localGrandTotal - (cAmt + gAmt)).toFixed(2);
+          alert(
+            `Cannot complete sale: Cash Amount (₹${cAmt.toFixed(2)}) + GPay Amount (₹${gAmt.toFixed(2)}) must equal Grand Total (₹${localGrandTotal.toFixed(2)}).\nRemaining to allocate: ₹${diff}.`
+          );
+          return;
+        }
+
+        finalCashAmount = cAmt;
+        finalGpayAmount = gAmt;
+        finalCashReceived = cashReceived > 0 ? cashReceived : cAmt;
+      }
+
+      const currentYear = new Date().getFullYear();
+      let newOrderId = "";
+      let isUnique = false;
+      let attempts = 0;
+
+      try {
+        while (!isUnique && attempts < 10) {
+          const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+          let randStr = "";
+          for (let i = 0; i < 5; i++) {
+            randStr += chars.charAt(Math.floor(Math.random() * chars.length));
+          }
+          const tempId = `INV-${currentYear}-${randStr}`;
+          const existsLocally = orders.some((o) => o.id === tempId);
+          if (!existsLocally) {
+            const { exists } = await checkOrderIdExistsAction(tempId);
+            if (!exists) {
+              newOrderId = tempId;
+              isUnique = true;
+            }
+          }
+          attempts++;
+        }
+      } catch (err) {
+        console.error("Error generating secure random invoice number:", err);
+      }
+
+      if (!newOrderId) {
         const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         let randStr = "";
         for (let i = 0; i < 5; i++) {
           randStr += chars.charAt(Math.floor(Math.random() * chars.length));
         }
-        const tempId = `INV-${currentYear}-${randStr}`;
-        const existsLocally = orders.some((o) => o.id === tempId);
-        if (!existsLocally) {
-          const { exists } = await checkOrderIdExistsAction(tempId);
-          if (!exists) {
-            newOrderId = tempId;
-            isUnique = true;
-          }
-        }
-        attempts++;
+        newOrderId = `INV-${currentYear}-${randStr}`;
       }
-    } catch (err) {
-      console.error("Error generating secure random invoice number:", err);
-    }
 
-    if (!newOrderId) {
-      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-      let randStr = "";
-      for (let i = 0; i < 5; i++) {
-        randStr += chars.charAt(Math.floor(Math.random() * chars.length));
+      // Format unique phone: phone_name_timestamp to bypass unique constraint
+      const dbPhone = `${customerPhone}_${customerName || "Guest"}_${Date.now()}`;
+
+      const dbItems = [
+        ...itemsToSave.map((i) => ({
+          snapshot_name: i.name,
+          snapshot_price: i.price,
+          quantity: i.qty,
+        })),
+      ];
+
+      if (applyGST && localGstAmount > 0) {
+        dbItems.push({
+          snapshot_name: `GST (${gstPercentage}%)`,
+          snapshot_price: localGstAmount,
+          quantity: 1,
+        });
       }
-      newOrderId = `INV-${currentYear}-${randStr}`;
-    }
 
-    // Format unique phone: phone_name_timestamp to bypass unique constraint
-    const dbPhone = `${customerPhone}_${customerName || "Guest"}_${Date.now()}`;
-
-    const dbItems = [
-      ...itemsToSave.map((i) => ({
-        snapshot_name: i.name,
-        snapshot_price: i.price,
-        quantity: i.qty,
-      })),
-    ];
-
-    if (applyGST && localGstAmount > 0) {
-      dbItems.push({
-        snapshot_name: `GST (${gstPercentage}%)`,
-        snapshot_price: localGstAmount,
-        quantity: 1,
+      const saveRes = await createOrderAction({
+        id: newOrderId,
+        customerName: customerName || "Guest",
+        customerPhone: dbPhone,
+        source: isOnline ? "ONLINE" : "OFFLINE",
+        status: "COMPLETED",
+        subtotal: localSubtotal,
+        discountType: discountType === "percent" ? "PERCENT" : "FIXED",
+        discountValue: discountValue,
+        discountAmount: localCalculatedDiscount,
+        deliveryFee: deliveryFee,
+        grandTotal: localGrandTotal,
+        cashReceived: finalCashReceived,
+        paymentMethod: paymentMethod,
+        cashAmount: finalCashAmount,
+        gpayAmount: finalGpayAmount,
+        items: dbItems,
       });
+
+      if (!saveRes.success) {
+        console.error("Error creating order:", saveRes.error);
+        alert(`Failed to save order: ${saveRes.error || "Network error"}. Please try again.`);
+        return;
+      }
+
+      const effectiveOrderId = saveRes.orderId || newOrderId;
+
+      const newOrder: CompletedOrder = {
+        id: effectiveOrderId,
+        customerName: customerName || "Guest",
+        customerPhone,
+        source: isOnline ? "ONLINE" : "OFFLINE",
+        items: [
+          ...itemsToSave,
+          ...(applyGST && localGstAmount > 0 ? [{ id: Math.random().toString(), name: `GST (${gstPercentage}%)`, desc: "", price: localGstAmount, qty: 1 }] : [])
+        ],
+        subtotal: localSubtotal,
+        discount: localCalculatedDiscount,
+        discountType: discountType === "percent" ? "PERCENT" : "FIXED",
+        discountValue: discountValue,
+        deliveryFee,
+        grandTotal: localGrandTotal,
+        cashReceived: finalCashReceived,
+        paymentMethod: paymentMethod,
+        cashAmount: finalCashAmount,
+        gpayAmount: finalGpayAmount,
+        date: new Date().toISOString(),
+        status: "Completed",
+      };
+
+      setOrders((prev) => {
+        if (prev.some((o) => o.id === effectiveOrderId)) {
+          return prev;
+        }
+        return [newOrder, ...prev];
+      });
+
+      // Show Bill Generated modal
+      setLastCompletedOrder(newOrder);
+      setShowBillGenerated(true);
+
+      // Cleanly clear billing form inputs so stale items cannot be accidentally re-submitted
+      setCustomerName("");
+      setCustomerPhone("");
+      setItems([{ id: "1", name: "", desc: "", price: 0, qty: 1 }]);
+      setDiscountValue(0);
+      setDeliveryFee(0);
+      setCashReceived(0);
+      setPaymentMethod("cash");
+      setSplitCashAmount("");
+      setSplitGpayAmount("");
+      setApplyGST(false);
+      setGstPercentage(18);
+    } catch (err: any) {
+      console.error("Unexpected error completing sale:", err);
+      alert("An unexpected error occurred while completing the sale. Please try again.");
+    } finally {
+      isSubmittingOrderRef.current = false;
+      setIsSubmittingOrder(false);
     }
-
-    const saveRes = await createOrderAction({
-      id: newOrderId,
-      customerName: customerName || "Guest",
-      customerPhone: dbPhone,
-      source: isOnline ? "ONLINE" : "OFFLINE",
-      status: "COMPLETED",
-      subtotal: localSubtotal,
-      discountType: discountType === "percent" ? "PERCENT" : "FIXED",
-      discountValue: discountValue,
-      discountAmount: localCalculatedDiscount,
-      deliveryFee: deliveryFee,
-      grandTotal: localGrandTotal,
-      cashReceived: finalCashReceived,
-      paymentMethod: paymentMethod,
-      cashAmount: finalCashAmount,
-      gpayAmount: finalGpayAmount,
-      items: dbItems,
-    });
-
-    if (!saveRes.success) {
-      console.error("Error creating order:", saveRes.error);
-    }
-
-    const newOrder: CompletedOrder = {
-      id: newOrderId,
-      customerName: customerName || "Guest",
-      customerPhone,
-      source: isOnline ? "ONLINE" : "OFFLINE",
-      items: [
-        ...itemsToSave,
-        ...(applyGST && gstAmount > 0 ? [{ id: Math.random().toString(), name: `GST (${gstPercentage}%)`, desc: "", price: gstAmount, qty: 1 }] : [])
-      ],
-      subtotal,
-      discount: calculatedDiscount,
-      discountType: discountType === "percent" ? "PERCENT" : "FIXED",
-      discountValue: discountValue,
-      deliveryFee,
-      grandTotal,
-      cashReceived: finalCashReceived,
-      paymentMethod: paymentMethod,
-      cashAmount: finalCashAmount,
-      gpayAmount: finalGpayAmount,
-      date: new Date().toISOString(),
-      status: "Completed",
-    };
-
-    setOrders((prev) => [newOrder, ...prev]);
-
-    // Show Bill Generated modal
-    setLastCompletedOrder(newOrder);
-    setShowBillGenerated(true);
   };
 
   const resetBillingForm = () => {
@@ -932,6 +972,8 @@ export default function POSBilling() {
     setGstPercentage(18);
     setLastCompletedOrder(null);
     setShowBillGenerated(false);
+    isSubmittingOrderRef.current = false;
+    setIsSubmittingOrder(false);
   };
 
   const resendWhatsApp = (order: CompletedOrder) => {
@@ -2600,23 +2642,37 @@ export default function POSBilling() {
                       const isSplitUnbalanced =
                         paymentMethod === "split" &&
                         (Math.abs(grandTotal - (numCash + numGpay)) > 0.01 || grandTotal <= 0);
+                      const isButtonDisabled = isSplitUnbalanced || isSubmittingOrder;
 
                       return (
                         <button
+                          type="button"
                           onClick={() => handleCompleteSale('business')}
-                          disabled={isSplitUnbalanced}
-                          className={`w-full mt-2 py-3.5 rounded-lg font-bold text-[11px] uppercase tracking-[0.1em] flex items-center justify-center gap-2.5 transition-transform active:scale-[0.98] shadow-[0_4px_14px_rgba(16,185,129,0.4)] ${
-                            isSplitUnbalanced
-                              ? "bg-neutral-400 text-neutral-100 cursor-not-allowed opacity-60 shadow-none"
+                          disabled={isButtonDisabled}
+                          className={`w-full mt-2 py-3.5 rounded-lg font-bold text-[11px] uppercase tracking-[0.1em] flex items-center justify-center gap-2.5 transition-all active:scale-[0.98] shadow-[0_4px_14px_rgba(16,185,129,0.4)] ${
+                            isButtonDisabled
+                              ? "bg-neutral-400 text-neutral-100 cursor-not-allowed opacity-60 shadow-none pointer-events-none"
                               : "bg-[#10B981] hover:bg-[#059669] text-white cursor-pointer"
                           }`}
                         >
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M20 6L9 17l-5-5" />
-                          </svg>
-                          {isSplitUnbalanced
-                            ? `Allocate Full Total (₹${Math.abs(grandTotal - (numCash + numGpay)).toFixed(2)} diff)`
-                            : "Complete Sale"}
+                          {isSubmittingOrder ? (
+                            <>
+                              <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Processing Sale...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M20 6L9 17l-5-5" />
+                              </svg>
+                              {isSplitUnbalanced
+                                ? `Allocate Full Total (₹${Math.abs(grandTotal - (numCash + numGpay)).toFixed(2)} diff)`
+                                : "Complete Sale"}
+                            </>
+                          )}
                         </button>
                       );
                     })()}

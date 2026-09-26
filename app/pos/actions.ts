@@ -167,7 +167,40 @@ export async function createOrderAction(payload: {
   try {
     const sql = getDb();
 
-    // 1. Upsert customer
+    // 0. Primary ID check: If this exact invoice ID already exists, do not duplicate
+    const existingById = await sql`SELECT id FROM orders WHERE id = ${payload.id} LIMIT 1;`;
+    if (existingById.length > 0) {
+      console.warn(`createOrderAction: Order ${payload.id} already exists. Returning existing.`);
+      return { success: true, orderId: payload.id, alreadyExisted: true };
+    }
+
+    // 1. Deduplication window check:
+    // Extract base 10-digit phone
+    const rawPhone = (payload.customerPhone || "").trim();
+    const cleanPhone = rawPhone.includes("_") ? rawPhone.split("_")[0] : rawPhone;
+
+    if (cleanPhone && cleanPhone.length === 10) {
+      // Guard against rapid duplicate submissions (e.g. double-tap or network retry within 45 seconds)
+      const recentDuplicates = await sql`
+        SELECT o.id, o.created_at
+        FROM orders o
+        JOIN customers c ON o.customer_id = c.id
+        WHERE c.phone LIKE ${cleanPhone + '%'}
+          AND ABS(o.grand_total - ${payload.grandTotal}) < 0.01
+          AND o.created_at > (NOW() - INTERVAL '45 seconds')
+        ORDER BY o.created_at DESC
+        LIMIT 1;
+      `;
+
+      if (recentDuplicates.length > 0) {
+        console.warn(
+          `createOrderAction: Rapid duplicate order prevented. Order ${recentDuplicates[0].id} already exists within 45s for phone ${cleanPhone} and total ₹${payload.grandTotal}. Returning existing order.`
+        );
+        return { success: true, orderId: recentDuplicates[0].id, duplicatePrevented: true };
+      }
+    }
+
+    // 2. Upsert customer
     const custPhone = payload.customerPhone.trim();
     const custRows = await sql`
       INSERT INTO customers (name, phone)
