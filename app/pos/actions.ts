@@ -145,6 +145,8 @@ export async function createOrderAction(payload: {
   id: string;
   customerName: string;
   customerPhone: string;
+  remarks?: string;
+  createdAt?: string;
   source: "ONLINE" | "OFFLINE";
   status?: string;
   subtotal: number;
@@ -219,6 +221,10 @@ export async function createOrderAction(payload: {
       ? payload.gpayAmount
       : (pMethod === "gpay" ? payload.grandTotal : 0);
 
+    const orderCreatedAt = payload.createdAt
+      ? new Date(payload.createdAt).toISOString()
+      : new Date().toISOString();
+
     // 2. Insert order
     await sql`
       INSERT INTO orders (
@@ -235,7 +241,9 @@ export async function createOrderAction(payload: {
         cash_received,
         payment_method,
         cash_amount,
-        gpay_amount
+        gpay_amount,
+        remarks,
+        created_at
       ) VALUES (
         ${payload.id}, 
         ${customerId || null}, 
@@ -250,7 +258,9 @@ export async function createOrderAction(payload: {
         ${payload.cashReceived},
         ${pMethod},
         ${cAmount},
-        ${gAmount}
+        ${gAmount},
+        ${payload.remarks?.trim() || null},
+        ${orderCreatedAt}
       );
     `;
 
@@ -299,6 +309,7 @@ export async function fetchOrdersAction() {
         COALESCE(o.payment_method, 'cash') AS payment_method,
         COALESCE(o.cash_amount::float, CASE WHEN o.payment_method = 'gpay' THEN 0 ELSE o.grand_total::float END) AS cash_amount,
         COALESCE(o.gpay_amount::float, CASE WHEN o.payment_method = 'gpay' THEN o.grand_total::float ELSE 0 END) AS gpay_amount,
+        o.remarks,
         o.created_at,
         json_build_object('name', c.name, 'phone', c.phone) AS customers,
         COALESCE(
@@ -347,6 +358,7 @@ export async function fetchOrderByIdAction(id: string) {
         COALESCE(o.payment_method, 'cash') AS payment_method,
         COALESCE(o.cash_amount::float, CASE WHEN o.payment_method = 'gpay' THEN 0 ELSE o.grand_total::float END) AS cash_amount,
         COALESCE(o.gpay_amount::float, CASE WHEN o.payment_method = 'gpay' THEN o.grand_total::float ELSE 0 END) AS gpay_amount,
+        o.remarks,
         o.created_at,
         json_build_object('name', c.name, 'phone', c.phone) AS customers,
         COALESCE(

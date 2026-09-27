@@ -266,6 +266,11 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
           <div className="flex justify-between">
             <span>Tel: {displayPhone}</span>
           </div>
+          {order.remarks && (
+            <div className="flex justify-between">
+              <span>Remarks: {order.remarks}</span>
+            </div>
+          )}
         </div>
 
         {/* Dashed Separator */}

@@ -69,6 +69,7 @@ type CompletedOrder = {
   id: string;
   customerName: string;
   customerPhone: string;
+  remarks?: string;
   source: "ONLINE" | "OFFLINE";
   items: OrderItem[];
   subtotal: number;
@@ -303,6 +304,8 @@ export default function POSBilling() {
   const [isOnline, setIsOnline] = useState(false);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [remarks, setRemarks] = useState("");
+  const [billingDate, setBillingDate] = useState("");
   const [items, setItems] = useState<OrderItem[]>([
     { id: "1", name: "", desc: "", price: 0, qty: 1 },
   ]);
@@ -448,6 +451,7 @@ export default function POSBilling() {
             paymentMethod: (o.payment_method as "cash" | "gpay" | "split") || "cash",
             cashAmount: typeof o.cash_amount === "number" ? o.cash_amount : (o.payment_method === "gpay" ? 0 : o.grand_total),
             gpayAmount: typeof o.gpay_amount === "number" ? o.gpay_amount : (o.payment_method === "gpay" ? o.grand_total : 0),
+            remarks: o.remarks || undefined,
             date: o.created_at,
             status: o.status === "COMPLETED" ? "Completed" : "Pending",
           })),
@@ -880,6 +884,8 @@ export default function POSBilling() {
         id: newOrderId,
         customerName: customerName || "Guest",
         customerPhone: dbPhone,
+        remarks: remarks.trim() || undefined,
+        createdAt: billingDate ? new Date(billingDate).toISOString() : undefined,
         source: isOnline ? "ONLINE" : "OFFLINE",
         status: "COMPLETED",
         subtotal: localSubtotal,
@@ -907,6 +913,7 @@ export default function POSBilling() {
         id: effectiveOrderId,
         customerName: customerName || "Guest",
         customerPhone,
+        remarks: remarks.trim() || undefined,
         source: isOnline ? "ONLINE" : "OFFLINE",
         items: [
           ...itemsToSave,
@@ -922,7 +929,7 @@ export default function POSBilling() {
         paymentMethod: paymentMethod,
         cashAmount: finalCashAmount,
         gpayAmount: finalGpayAmount,
-        date: new Date().toISOString(),
+        date: billingDate ? new Date(billingDate).toISOString() : new Date().toISOString(),
         status: "Completed",
       };
 
@@ -940,6 +947,8 @@ export default function POSBilling() {
       // Cleanly clear billing form inputs so stale items cannot be accidentally re-submitted
       setCustomerName("");
       setCustomerPhone("");
+      setRemarks("");
+      setBillingDate("");
       setItems([{ id: "1", name: "", desc: "", price: 0, qty: 1 }]);
       setDiscountValue(0);
       setDeliveryFee(0);
@@ -961,6 +970,8 @@ export default function POSBilling() {
   const resetBillingForm = () => {
     setCustomerName("");
     setCustomerPhone("");
+    setRemarks("");
+    setBillingDate("");
     setItems([{ id: "1", name: "", desc: "", price: 0, qty: 1 }]);
     setDiscountValue(0);
     setDeliveryFee(0);
@@ -1508,6 +1519,7 @@ export default function POSBilling() {
       "Date                   ",
       "Customer Name           ",
       "Customer Phone          ",
+      "Remarks                 ",
       "Source        ",
       "Payment Method",
       "Cash Amount   ",
@@ -1543,6 +1555,7 @@ export default function POSBilling() {
         formattedDate,
         o.customerName,
         formattedPhone,
+        o.remarks || "",
         o.source,
         o.paymentMethod || "cash",
         o.cashAmount !== undefined ? o.cashAmount : (o.paymentMethod === "gpay" ? 0 : o.grandTotal),
@@ -1868,6 +1881,43 @@ export default function POSBilling() {
                           )
                         }
                       />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#000000] uppercase tracking-[0.15em] mb-2">
+                        Remarks (Internal)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Optional remarks"
+                        className="w-full bg-[#FFFFFF]/40 border border-black/10 hover:border-black/10 focus:border-[#8C6D23] focus:bg-white rounded-lg px-4 py-2.5 text-[#000000] text-sm font-semibold focus:outline-none transition-colors placeholder:text-gray-400 placeholder:font-normal shadow-sm"
+                        value={remarks}
+                        onChange={(e) => setRemarks(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="block text-[10px] font-bold text-[#000000] uppercase tracking-[0.15em]">
+                          Billing Date (Optional)
+                        </label>
+                        {billingDate && (
+                          <button
+                            type="button"
+                            onClick={() => setBillingDate("")}
+                            className="text-[10px] font-bold text-[#8C6D23] hover:underline cursor-pointer"
+                          >
+                            Reset to Now
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="datetime-local"
+                        className="w-full bg-[#FFFFFF]/40 border border-black/10 hover:border-black/10 focus:border-[#8C6D23] focus:bg-white rounded-lg px-4 py-2.5 text-[#000000] text-sm font-semibold focus:outline-none transition-colors shadow-sm"
+                        value={billingDate}
+                        onChange={(e) => setBillingDate(e.target.value)}
+                      />
+                      <p className="text-[11px] text-gray-500 mt-1.5 font-normal">
+                        Leave blank to use today&apos;s date &amp; time
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -2198,6 +2248,26 @@ export default function POSBilling() {
                         {customerPhone || "-"}
                       </span>
                     </div>
+                    {remarks && (
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-[#000000] font-semibold">
+                          REMARKS
+                        </span>
+                        <span className="font-semibold text-neutral-700 truncate max-w-[65%] text-right" title={remarks}>
+                          {remarks}
+                        </span>
+                      </div>
+                    )}
+                    {billingDate && (
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-[#000000] font-semibold">
+                          BILLING DATE
+                        </span>
+                        <span className="font-bold text-[#8C6D23] truncate max-w-[65%] text-right">
+                          {new Date(billingDate).toLocaleString()}
+                        </span>
+                      </div>
+                    )}
 
                     {/* Items summary list inside customer details box */}
                     <div className="border-t border-black/10 pt-2.5 mt-2.5">
@@ -2717,6 +2787,12 @@ export default function POSBilling() {
                       : (lastCompletedOrder.paymentMethod === 'gpay' ? `GPay — ₹${lastCompletedOrder.grandTotal.toFixed(2)}` : `Cash — ₹${lastCompletedOrder.grandTotal.toFixed(2)}`)}
                   </span>
                 </div>
+                {lastCompletedOrder.remarks && (
+                  <div className="flex justify-between items-start text-sm mb-2">
+                    <span className="text-[#374151] font-semibold">Remarks</span>
+                    <span className="font-bold text-[#000000] text-right max-w-[65%]">{lastCompletedOrder.remarks}</span>
+                  </div>
+                )}
 
                 {lastCompletedOrder.paymentMethod === 'split' && (
                   <div className="bg-white border border-black/10 rounded-lg p-2.5 mb-2.5 text-xs space-y-1">
@@ -3032,7 +3108,12 @@ export default function POSBilling() {
                                 {order.id}
                               </td>
                               <td className="p-4 text-xs font-bold text-[#000000]">
-                                {order.customerName}
+                                <div>{order.customerName}</div>
+                                {order.remarks && (
+                                  <div className="text-[10px] text-gray-500 font-normal mt-0.5 max-w-[200px] truncate" title={order.remarks}>
+                                    📝 {order.remarks}
+                                  </div>
+                                )}
                               </td>
                               <td className="p-4 text-xs font-mono font-bold text-[#000000]">
                                 {order.customerPhone || "-"}
@@ -4284,6 +4365,16 @@ export default function POSBilling() {
                       {new Date(selectedOrder.date).toLocaleString()}
                     </div>
                   </div>
+                  {selectedOrder.remarks && (
+                    <div className="col-span-2 bg-[#F9FAFB] border border-black/10 rounded-lg p-3">
+                      <div className="text-[10px] font-bold text-[#000000] uppercase tracking-wider mb-1">
+                        Remarks (Internal)
+                      </div>
+                      <div className="text-xs font-semibold text-[#000000]">
+                        {selectedOrder.remarks}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="mb-4 text-[11px] font-bold text-[#000000] uppercase tracking-[0.1em] border-b border-black/10 pb-2">

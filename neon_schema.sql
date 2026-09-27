@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS orders (
     payment_method TEXT NOT NULL DEFAULT 'cash', -- 'cash' | 'gpay' | 'split'
     cash_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
     gpay_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    remarks TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
